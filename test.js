@@ -64,7 +64,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     let currentTarget  = null;    // {name: string} | null
     let idlePackName   = "";      // pack to draw random idle emotes from ("" = disabled)
     let idleMinutes    = 0;       // minutes before idle emote fires (0 = disabled)
-    let sidebarCollapsed = false; // sidebar collapsed state
+    let sidebarCollapsed = true;  // sidebar collapsed by default
     let sidebarX = null;          // null = use default right-edge position; otherwise left px
     let sidebarY = 80;            // top px
     let hudX = null;              // null = default centred-top; otherwise left px
@@ -91,7 +91,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 suppressChat     = data.suppressChat     || false;
                 idlePackName     = data.idlePackName     || "";
                 idleMinutes      = data.idleMinutes      || 0;
-                sidebarCollapsed = data.sidebarCollapsed || false;
+                sidebarCollapsed = data.sidebarCollapsed ?? true;  // default collapsed
                 sidebarX         = data.sidebarX     != null ? data.sidebarX     : null;
                 sidebarY         = data.sidebarY     != null ? data.sidebarY     : 80;
                 hudX             = data.hudX         != null ? data.hudX         : null;
@@ -463,7 +463,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         Object.assign(sidebar.style, {
             position: "fixed", zIndex: "99998",
             display: "flex", flexDirection: "column",
-            gap: "8px", alignItems: "flex-end",
+            gap: "6px", alignItems: "stretch",
             opacity: "0.25",
             transition: "opacity 0.25s ease",
         });
@@ -485,9 +485,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         Object.assign(toggle.style, {
             cursor: "grab", userSelect: "none",
             background: "rgba(20,20,30,0.85)", color: "#ff69b4",
-            padding: "4px 11px", borderRadius: "12px",
+            padding: "7px 12px", borderRadius: "8px",
             border: "1.5px solid #ff69b4",
-            fontSize: "14px", lineHeight: "1.6",
+            fontSize: "13px", lineHeight: "1.4", textAlign: "center",
         });
         sidebar.appendChild(toggle);
         document.body.appendChild(sidebar);
@@ -568,10 +568,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         btn.id = "rw-settings-btn";
         btn.textContent = "\u2699"; // gear
         Object.assign(btn.style, {
-            fontSize: "24px", cursor: "pointer",
+            fontSize: "20px", cursor: "pointer",
             background: "rgba(20,20,30,0.85)", color: "#ff69b4",
-            padding: "8px 12px", borderRadius: "50%",
-            border: "2px solid #ff69b4", lineHeight: "1", userSelect: "none",
+            padding: "7px 12px", borderRadius: "8px",
+            border: "1.5px solid #ff69b4", lineHeight: "1.4",
+            userSelect: "none", textAlign: "center",
         });
         btn.title = "Reaction Wheel Settings";
         btn.onclick = openSettingsModal;
@@ -991,10 +992,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         Object.assign(el.style, {
             fontFamily: "Arial,sans-serif", fontSize: "12px",
             background: "rgba(20,20,30,0.85)", color: "#ff69b4",
-            border: "1.5px solid #ff69b4", borderRadius: "20px",
-            padding: "4px 10px", userSelect: "none",
+            border: "1.5px solid #ff69b4", borderRadius: "8px",
+            padding: "7px 10px", userSelect: "none",
             display: "flex", alignItems: "center", gap: "5px",
-            maxWidth: "130px",
         });
 
         const prev = Object.assign(document.createElement("span"), {textContent: "◀"});
@@ -1035,8 +1035,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         Object.assign(btn.style, {
             fontSize: "18px", cursor: "pointer",
             background: "rgba(20,20,30,0.85)", color: "#ff69b4",
-            padding: "6px 12px", borderRadius: "20px",
-            border: "2px solid #ff69b4", lineHeight: "1.4", userSelect: "none",
+            padding: "7px 12px", borderRadius: "8px",
+            border: "1.5px solid #ff69b4", lineHeight: "1.4",
+            userSelect: "none", textAlign: "center",
         });
         btn.textContent = "🕐";
         btn.title = "Emote history (last 10) — click to re-fire";
@@ -1055,8 +1056,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         panel.id = "rw-history-panel";
         Object.assign(panel.style, {
             position: "fixed",
-            right: (window.innerWidth - rect.left + 8) + "px",
-            top: rect.top + "px",
+            ...popupPos(rect),
             background: "#1a1a2e", border: "1.5px solid #ff69b4",
             borderRadius: "10px", zIndex: "100001",
             fontFamily: "Arial,sans-serif", fontSize: "13px",
@@ -1146,10 +1146,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         const btn = document.createElement("div");
         btn.id = "rw-suppress-btn";
         Object.assign(btn.style, {
-            fontSize: "20px", cursor: "pointer",
+            fontSize: "18px", cursor: "pointer",
             background: "rgba(20,20,30,0.85)",
-            padding: "8px 12px", borderRadius: "50%",
-            border: "2px solid #ff69b4", lineHeight: "1", userSelect: "none",
+            padding: "7px 12px", borderRadius: "8px",
+            border: "1.5px solid #ff69b4", lineHeight: "1.4",
+            userSelect: "none", textAlign: "center",
         });
         btn.onclick = () => { suppressChat = !suppressChat; saveData(); updateSuppressButton(); };
         sidebarAppend(btn);
@@ -1165,6 +1166,22 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         btn.style.borderColor = suppressChat ? "#555" : "#ff69b4";
     }
 
+    // Returns true when the sidebar's midpoint is in the right half of the viewport
+    function sidebarOnRight() {
+        const sb = document.getElementById("rw-sidebar");
+        if (!sb) return true;
+        const r = sb.getBoundingClientRect();
+        return (r.left + r.width / 2) > window.innerWidth / 2;
+    }
+
+    // Returns position styles for a popup that should open beside the sidebar
+    function popupPos(anchorRect) {
+        const onRight = sidebarOnRight();
+        return onRight
+            ? {right: (window.innerWidth - anchorRect.left + 8) + "px", left: "auto",  top: anchorRect.top + "px"}
+            : {left:  (anchorRect.right + 8) + "px",                    right: "auto", top: anchorRect.top + "px"};
+    }
+
     // ====================== TARGET SELECTOR ======================
 
     function createTargetButton() {
@@ -1173,9 +1190,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         Object.assign(btn.style, {
             fontSize: "13px", cursor: "pointer",
             background: "rgba(20,20,30,0.85)", color: "#ff69b4",
-            padding: "5px 10px", borderRadius: "20px",
-            border: "2px solid #ff69b4", lineHeight: "1.4",
-            userSelect: "none", maxWidth: "130px",
+            padding: "7px 10px", borderRadius: "8px",
+            border: "1.5px solid #ff69b4", lineHeight: "1.4",
+            userSelect: "none", textAlign: "center",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         });
         btn.onclick = openTargetPicker;
@@ -1211,8 +1228,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         menu.id = "rw-target-picker";
         Object.assign(menu.style, {
             position: "fixed",
-            right: (window.innerWidth - rect.left + 8) + "px",
-            top:   rect.top + "px",
+            ...popupPos(rect),
             background: "#1a1a2e", border: "1.5px solid #ff69b4",
             borderRadius: "8px", zIndex: "100001",
             fontFamily: "Arial,sans-serif", fontSize: "13px",
