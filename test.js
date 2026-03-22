@@ -231,9 +231,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     // ====================== PERFORM EMOTE ======================
     function sendChat(text) {
-        // Prefer BC's server send when in a chat room
         if (typeof ServerSend === "function" && typeof CurrentScreen !== "undefined" && CurrentScreen === "ChatRoom") {
-            ServerSend("ChatRoomChat", {Content: text, Type: "Chat"});
+            // *text* → Emote (BC renders it italic, prepending the character name)
+            // Strip surrounding asterisks; BC wraps the display automatically
+            if (text.startsWith("*") && text.endsWith("*") && text.length > 2) {
+                ServerSend("ChatRoomChat", {Content: text.slice(1, -1), Type: "Emote"});
+            } else {
+                ServerSend("ChatRoomChat", {Content: text, Type: "Chat"});
+            }
             return;
         }
         // Fallback: fill the input box so the player can hit Enter themselves
@@ -250,19 +255,23 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         });
     }
 
+    function refreshCharacter() {
+        // CharacterRefresh is the correct BC API; PlayerRefresh does not exist
+        if (typeof CharacterRefresh === "function") CharacterRefresh(Player);
+    }
+
     function applyPose(poseName, durationMs) {
         if (!poseName) return;
         const savedPose = Array.isArray(Player.ActivePose) ? [...Player.ActivePose] : [];
         try {
-            // ActivePose is a string array in BC, e.g. ["Kneel"]
             Player.ActivePose = [poseName];
-            if (typeof PlayerRefresh === "function") PlayerRefresh();
+            refreshCharacter();
         } catch(err) { console.warn("[ReactionWheel] Pose error:", err); }
 
         setTimeout(() => {
             try {
                 Player.ActivePose = savedPose;
-                if (typeof PlayerRefresh === "function") PlayerRefresh();
+                refreshCharacter();
             } catch(err) {}
         }, durationMs);
     }
@@ -285,7 +294,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             Player.ArousalSettings.Progress = Math.min(100, current + emote.arousal);
         }
 
-        if (typeof PlayerRefresh === "function") PlayerRefresh();
+        refreshCharacter();
     }
 
     // ====================== SETTINGS MODAL ======================
@@ -576,6 +585,24 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     function refreshModal() { closeSettingsModal(); openSettingsModal(); }
     function closeSettingsModal() { document.getElementById("rw-modal")?.remove(); }
 
+    // ====================== ITALIC CHAT HOOK ======================
+    // Intercepts Enter on BC's chat input: if the message is *wrapped in asterisks*,
+    // re-send it as an Emote so BC renders it italic instead of plain text.
+    function hookItalicChat() {
+        document.addEventListener("keydown", e => {
+            if (e.key !== "Enter") return;
+            const input = document.getElementById("InputChat");
+            if (!input || document.activeElement !== input) return;
+            const text = input.value.trim();
+            if (!text.startsWith("*") || !text.endsWith("*") || text.length < 3) return;
+            if (typeof ServerSend !== "function") return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            ServerSend("ChatRoomChat", {Content: text.slice(1, -1), Type: "Emote"});
+            input.value = "";
+        }, true /* capture phase — runs before BC's own keydown */);
+    }
+
     // ====================== KEYBOARD TRIGGER ======================
     document.addEventListener("keydown", e => {
         if (e.key !== triggerKey || wheelActive) return;
@@ -593,6 +620,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     // ====================== START ======================
     setTimeout(() => {
         createSettingsButton();
+        hookItalicChat();
         console.log(
             "%c✅ BC Reaction Wheel v1.1.0 loaded! Hold Ctrl to open. Click \u2699 for settings.",
             "color:#ff69b4;font-weight:bold"
