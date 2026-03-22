@@ -65,6 +65,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     let idlePackName   = "";      // pack to draw random idle emotes from ("" = disabled)
     let idleMinutes    = 0;       // minutes before idle emote fires (0 = disabled)
     let sidebarCollapsed = false; // sidebar collapsed state
+    let sidebarX = null;          // null = use default right-edge position; otherwise left px
+    let sidebarY = 80;            // top px
     let lastActivity   = Date.now();
     let wheelActive    = false;
     let selected = -1;
@@ -86,13 +88,16 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 idlePackName     = data.idlePackName     || "";
                 idleMinutes      = data.idleMinutes      || 0;
                 sidebarCollapsed = data.sidebarCollapsed || false;
+                sidebarX         = data.sidebarX != null ? data.sidebarX : null;
+                sidebarY         = data.sidebarY != null ? data.sidebarY : 80;
             }
         } catch(err) { console.error("[ReactionWheel] Load error:", err); }
     }
     function saveData() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
             packs, currentPack, triggerMode, triggerKey,
-            suppressChat, idlePackName, idleMinutes, sidebarCollapsed,
+            suppressChat, idlePackName, idleMinutes,
+            sidebarCollapsed, sidebarX, sidebarY,
         }));
     }
     loadData();
@@ -415,32 +420,79 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         const sidebar = document.createElement("div");
         sidebar.id = "rw-sidebar";
         Object.assign(sidebar.style, {
-            position: "fixed", right: "20px", top: "80px",
-            zIndex: "99998",
+            position: "fixed", zIndex: "99998",
             display: "flex", flexDirection: "column",
             gap: "8px", alignItems: "flex-end",
             opacity: "0.25",
             transition: "opacity 0.25s ease",
         });
-        // Fade fully opaque on hover, back to ghost when mouse leaves
+        // Apply saved or default position
+        if (sidebarX !== null) {
+            sidebar.style.left = sidebarX + "px";
+            sidebar.style.top  = sidebarY + "px";
+        } else {
+            sidebar.style.right = "20px";
+            sidebar.style.top   = sidebarY + "px";
+        }
+
         sidebar.onmouseenter = () => sidebar.style.opacity = "1";
         sidebar.onmouseleave = () => sidebar.style.opacity = "0.25";
 
-        // Toggle button — always visible
+        // Toggle button — doubles as drag handle
         const toggle = document.createElement("div");
         toggle.id = "rw-sidebar-toggle";
         Object.assign(toggle.style, {
-            cursor: "pointer", userSelect: "none",
+            cursor: "grab", userSelect: "none",
             background: "rgba(20,20,30,0.85)", color: "#ff69b4",
             padding: "4px 11px", borderRadius: "12px",
             border: "1.5px solid #ff69b4",
             fontSize: "14px", lineHeight: "1.6",
         });
-        toggle.onclick = toggleSidebar;
         sidebar.appendChild(toggle);
-
         document.body.appendChild(sidebar);
-        applySidebarState(); // set initial toggle label
+        applySidebarState(); // set initial label
+
+        // ---- Drag-to-move ----
+        toggle.addEventListener("mousedown", e => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+
+            const rect   = sidebar.getBoundingClientRect();
+            const startX = e.clientX - rect.left;
+            const startY = e.clientY - rect.top;
+            let moved    = false;
+
+            // Switch to left-based positioning so math works while dragging
+            sidebar.style.left  = rect.left + "px";
+            sidebar.style.right = "auto";
+            toggle.style.cursor = "grabbing";
+
+            const onMove = ev => {
+                const nx = ev.clientX - startX;
+                const ny = ev.clientY - startY;
+                // Clamp inside viewport
+                const maxX = window.innerWidth  - sidebar.offsetWidth;
+                const maxY = window.innerHeight - sidebar.offsetHeight;
+                sidebar.style.left = Math.max(0, Math.min(maxX, nx)) + "px";
+                sidebar.style.top  = Math.max(0, Math.min(maxY, ny)) + "px";
+                if (Math.abs(ev.clientX - e.clientX) > 4 ||
+                    Math.abs(ev.clientY - e.clientY) > 4) moved = true;
+            };
+
+            const onUp = () => {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup",   onUp);
+                toggle.style.cursor = "grab";
+                sidebarX = parseInt(sidebar.style.left);
+                sidebarY = parseInt(sidebar.style.top);
+                saveData();
+                // Only toggle collapse if the mouse barely moved (i.e. it was a click)
+                if (!moved) toggleSidebar();
+            };
+
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup",   onUp);
+        });
     }
 
     function toggleSidebar() {
