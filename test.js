@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BC Reaction Wheel - Fully Featured
 // @namespace    http://khile.dev/
-// @version      1.2.0
+// @version      1.3.0
 // @description  Beautiful radial emote wheel with full editor, packs & more
 // @author       Khile
 // @match        https://www.bondageprojects.com/club_game/*
@@ -22,7 +22,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     const modApi = bcModSdk.registerMod({
         name: "ReactionWheel",
         fullName: "Khile's Reaction Wheel",
-        version: "1.2.0",
+        version: "1.3.0",
         repository: "https://github.com/yourname/bc-reaction-wheel"
     });
 
@@ -59,8 +59,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         ]
     };
 
-    let cooldownUntil = 0;
-    let wheelActive = false;
+    let emoteLastUsed  = {};      // emote.id → timestamp of last use
+    let suppressChat   = false;   // OOC suppress toggle
+    let currentTarget  = null;    // {name: string} | null
+    let idlePackName   = "";      // pack to draw random idle emotes from ("" = disabled)
+    let idleMinutes    = 0;       // minutes before idle emote fires (0 = disabled)
+    let lastActivity   = Date.now();
+    let wheelActive    = false;
     let selected = -1;
     let triggerMode = "hold"; // "hold" or "toggle"
     let triggerKey = "Control";
@@ -72,15 +77,21 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 const data = JSON.parse(saved);
-                packs = data.packs || packs;
-                currentPack = data.currentPack || "Default";
-                triggerMode = data.triggerMode || "hold";
-                triggerKey = data.triggerKey || "Control";
+                packs        = data.packs        || packs;
+                currentPack  = data.currentPack  || "Default";
+                triggerMode  = data.triggerMode  || "hold";
+                triggerKey   = data.triggerKey   || "Control";
+                suppressChat = data.suppressChat || false;
+                idlePackName = data.idlePackName || "";
+                idleMinutes  = data.idleMinutes  || 0;
             }
         } catch(err) { console.error("[ReactionWheel] Load error:", err); }
     }
     function saveData() {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({packs, currentPack, triggerMode, triggerKey}));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            packs, currentPack, triggerMode, triggerKey,
+            suppressChat, idlePackName, idleMinutes,
+        }));
     }
     loadData();
 
@@ -136,14 +147,15 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         const cx = half, cy = half, r = half - 10;
 
         emotes.forEach((e, i) => {
-            const start = i * slice - Math.PI / 2;
-            const end   = start + slice;
-            const mid   = (start + end) / 2;
+            const start  = i * slice - Math.PI / 2;
+            const end    = start + slice;
+            const mid    = (start + end) / 2;
+            const onCd   = isOnCooldown(e);
 
             ctx.beginPath();
             ctx.moveTo(cx, cy);
             ctx.arc(cx, cy, r, start, end);
-            ctx.fillStyle = selected === i ? lightenHex(e.color) : e.color;
+            ctx.fillStyle = onCd ? "#2e2e2e" : (selected === i ? lightenHex(e.color) : e.color);
             ctx.fill();
             ctx.strokeStyle = "#111";
             ctx.lineWidth = 2;
@@ -163,7 +175,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             ctx.strokeStyle = "#000";
             ctx.lineWidth = 2;
             ctx.strokeText(e.name, 0, 7);
-            ctx.fillStyle = selected === i ? "#000" : "#fff";
+            ctx.fillStyle = onCd ? "#555" : (selected === i ? "#000" : "#fff");
             ctx.fillText(e.name, 0, 7);
             ctx.restore();
         });
@@ -228,18 +240,20 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     function onMouseUp() {
         const emotes = packs[currentPack] || [];
-        if (selected >= 0 && selected < emotes.length && Date.now() > cooldownUntil) {
-            performEmote(emotes[selected]);
-            cooldownUntil = Date.now() + 3000;
+        const emote  = emotes[selected];
+        if (emote && !isOnCooldown(emote)) {
+            emoteLastUsed[emote.id] = Date.now();
+            performEmote(emote);
         }
         hideWheel();
     }
 
     // ====================== PERFORM EMOTE ======================
     function sendChat(text) {
+        if (suppressChat) return;
+        // Substitute [Name] with the current target's name if one is set
+        if (currentTarget) text = text.replace(/\[Name\]/gi, currentTarget.name);
         if (typeof ServerSend === "function" && typeof CurrentScreen !== "undefined" && CurrentScreen === "ChatRoom") {
-            // *text* → Emote (BC renders it italic, prepending the character name)
-            // Strip surrounding asterisks; BC wraps the display automatically
             if (text.startsWith("*") && text.endsWith("*") && text.length > 2) {
                 ServerSend("ChatRoomChat", {Content: text.slice(1, -1), Type: "Emote"});
             } else {
@@ -247,9 +261,24 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             }
             return;
         }
-        // Fallback: fill the input box so the player can hit Enter themselves
         const input = document.getElementById("InputChat") || document.getElementById("ChatMessage");
         if (input) { input.value = text; input.focus(); }
+    }
+
+    function isOnCooldown(emote) {
+        const last = emoteLastUsed[emote.id] || 0;
+        return Date.now() - last < (emote.duration || 5) * 1000;
+    }
+
+    function findEmoteByName(name) {
+        if (!name) return null;
+        // Search current pack first, then the rest
+        const allPacks = [packs[currentPack], ...Object.values(packs).filter(p => p !== packs[currentPack])];
+        for (const pack of allPacks) {
+            const found = pack.find(e => e.name === name);
+            if (found) return found;
+        }
+        return null;
     }
 
     function applyExpression(exprName, durationSec) {
@@ -346,8 +375,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         document.getElementById("rw-hud")?.remove();
     }
 
-    function performEmote(emote) {
-        if (!emote) return;
+    function performEmote(emote, _depth = 0) {
+        if (!emote || _depth > 5) return;
         const duration = emote.duration || 5;
 
         if (emote.chat) sendChat(emote.chat);
@@ -361,6 +390,18 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
         showHUD(emote, duration * 1000);
         if (typeof CharacterRefresh === "function") CharacterRefresh(Player);
+        lastActivity = Date.now();
+
+        // Follow-up chain: fire the next emote after this one ends + optional extra delay
+        if (emote.followUp) {
+            const next = findEmoteByName(emote.followUp);
+            if (next) {
+                setTimeout(() => {
+                    emoteLastUsed[next.id] = Date.now();
+                    performEmote(next, _depth + 1);
+                }, duration * 1000 + (emote.followUpDelay || 0) * 1000);
+            }
+        }
     }
 
     // ====================== SETTINGS MODAL ======================
@@ -403,8 +444,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
 
     function buildSettingsHTML() {
-        const packNames = Object.keys(packs);
-        const emotes = packs[currentPack] || [];
+        const packNames      = Object.keys(packs);
+        const emotes         = packs[currentPack] || [];
+        const emoteNames     = emotes.map(e => e.name);
+        const idlePackOptions = packNames.map(p =>
+            `<option value="${p}" ${idlePackName===p?"selected":""}>${p}</option>`
+        ).join("");
 
         const packTabs = packNames.map(p =>
             `<button class="rw-pack-tab" data-pack="${p}"
@@ -484,8 +529,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 ${mkInput("rw-f-color",    "Color",        "color",  "#ff69b4")}
                 ${mkInput("rw-f-duration", "Duration (s)", "number", "5")}
                 ${mkInput("rw-f-arousal",  "Arousal +",    "number", "5")}
-                ${mkDataInput("rw-f-expr", "Expression", Object.keys(EXPRESSION_MAP), "Sad")}
-                ${mkDataInput("rw-f-pose", "Pose",       BC_POSES,                  "Kneel")}
+                ${mkDataInput("rw-f-expr",          "Expression",       Object.keys(EXPRESSION_MAP), "Sad")}
+                ${mkDataInput("rw-f-pose",          "Pose",             BC_POSES,                    "Kneel")}
+                ${mkDataInput("rw-f-followup",      "Follow-up emote",  emoteNames,                  "(none)")}
+                ${mkInput(    "rw-f-followup-delay","Follow-up delay(s)","number",                   "0")}
             </div>
             <div>
                 <label style="display:block;font-size:12px;color:#aaa;margin-bottom:3px;">Chat / emote text</label>
@@ -501,7 +548,25 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             </div>
         </div>
 
-        <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:10px;border-top:1px solid #2a2a3a;">
+        <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:6px;color:#aaa;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Idle Auto-emote</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <select id="rw-idle-pack"
+                    style="flex:1;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 8px;font-size:13px;">
+                    <option value="">Disabled</option>
+                    ${idlePackOptions}
+                </select>
+                <input id="rw-idle-minutes" type="number" min="1" max="120" value="${idleMinutes || 5}"
+                    style="width:56px;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 7px;font-size:13px;">
+                <span style="color:#aaa;font-size:12px;white-space:nowrap;">min idle</span>
+            </div>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding-top:10px;border-top:1px solid #2a2a3a;">
+            <button id="rw-share-copy"
+                style="background:#1a1a2e;color:#ff69b4;border:1px solid #ff69b4;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px;">Share Pack</button>
+            <button id="rw-share-import"
+                style="background:#1a1a2e;color:#ff69b4;border:1px solid #ff69b4;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px;">Import Code</button>
             <button id="rw-import"
                 style="background:#1a1a2e;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px;">Import JSON</button>
             <button id="rw-export"
@@ -595,6 +660,40 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             modal.querySelector("#rw-emote-form").style.display = "none";
         };
 
+        modal.querySelector("#rw-share-copy").onclick = () => {
+            try {
+                const code = btoa(unescape(encodeURIComponent(JSON.stringify(packs[currentPack]))));
+                if (navigator.clipboard?.writeText) {
+                    navigator.clipboard.writeText(code).then(() =>
+                        alert("Pack code copied to clipboard!\nSend it to someone and they can paste it with \"Import Code\".")
+                    );
+                } else {
+                    prompt("Copy this pack code and share it:", code);
+                }
+            } catch(err) { alert("Failed to generate pack code."); }
+        };
+
+        modal.querySelector("#rw-share-import").onclick = () => {
+            const code = prompt("Paste a pack code:");
+            if (!code) return;
+            try {
+                const emotes = JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
+                if (!Array.isArray(emotes)) throw new Error("Not an array");
+                const name = prompt("Save as pack name:", "Imported");
+                if (!name) return;
+                packs[name] = emotes;
+                currentPack = name;
+                saveData(); refreshModal(); updatePackSwitcher();
+            } catch(err) { alert("Invalid pack code — make sure you copied it completely."); }
+        };
+
+        modal.querySelector("#rw-idle-pack").onchange = e => {
+            idlePackName = e.target.value; saveData();
+        };
+        modal.querySelector("#rw-idle-minutes").onchange = e => {
+            idleMinutes = Math.max(0, parseFloat(e.target.value) || 0); saveData();
+        };
+
         modal.querySelector("#rw-export").onclick = () => {
             const json = JSON.stringify({packs, currentPack, triggerMode, triggerKey}, null, 2);
             const a = Object.assign(document.createElement("a"), {
@@ -638,8 +737,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         modal.querySelector("#rw-f-chat").value     = e?.chat     ?? "";
         modal.querySelector("#rw-f-expr").value     = e?.expr     ?? "";
         modal.querySelector("#rw-f-pose").value     = e?.pose     ?? "";
-        modal.querySelector("#rw-f-duration").value = e?.duration ?? 5;
-        modal.querySelector("#rw-f-arousal").value  = e?.arousal  ?? 0;
+        modal.querySelector("#rw-f-duration").value      = e?.duration      ?? 5;
+        modal.querySelector("#rw-f-arousal").value       = e?.arousal       ?? 0;
+        modal.querySelector("#rw-f-followup").value      = e?.followUp      ?? "";
+        modal.querySelector("#rw-f-followup-delay").value = e?.followUpDelay ?? 0;
         form.scrollIntoView({behavior:"smooth"});
     }
 
@@ -653,8 +754,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             chat:     modal.querySelector("#rw-f-chat").value.trim(),
             expr:     modal.querySelector("#rw-f-expr").value.trim(),
             pose:     modal.querySelector("#rw-f-pose").value.trim(),
-            duration: parseFloat(modal.querySelector("#rw-f-duration").value) || 5,
-            arousal:  parseFloat(modal.querySelector("#rw-f-arousal").value)  || 0,
+            duration:       parseFloat(modal.querySelector("#rw-f-duration").value)       || 5,
+            arousal:        parseFloat(modal.querySelector("#rw-f-arousal").value)        || 0,
+            followUp:       modal.querySelector("#rw-f-followup").value.trim()            || "",
+            followUpDelay:  parseFloat(modal.querySelector("#rw-f-followup-delay").value) || 0,
         };
         if (!emote.name) { alert("Emote name is required."); return; }
         if (idx >= 0) { packs[currentPack][idx] = emote; } else { packs[currentPack].push(emote); }
@@ -716,6 +819,132 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         el.addEventListener("wheel", e => { e.preventDefault(); cyclePack(e.deltaY > 0 ? 1 : -1); }, {passive: false});
     }
 
+    // ====================== IDLE AUTO-EMOTE ======================
+    // Every 30 s check whether the player has been idle for idleMinutes.
+    // If so, fire a random emote from idlePackName (if configured).
+
+    function fireIdleEmote() {
+        const pack = packs[idlePackName];
+        if (!pack || !pack.length || wheelActive) return;
+        const emote = pack[Math.floor(Math.random() * pack.length)];
+        emoteLastUsed[emote.id] = Date.now();
+        performEmote(emote);
+        lastActivity = Date.now(); // reset so we don't fire every 30 s
+    }
+
+    setInterval(() => {
+        if (idleMinutes <= 0 || !idlePackName || !packs[idlePackName]) return;
+        if (Date.now() - lastActivity >= idleMinutes * 60 * 1000) fireIdleEmote();
+    }, 30000);
+
+    // ====================== OOC SUPPRESS BUTTON ======================
+
+    function createSuppressButton() {
+        const btn = document.createElement("div");
+        btn.id = "rw-suppress-btn";
+        Object.assign(btn.style, {
+            position: "fixed", right: "20px", top: "176px",
+            fontSize: "20px", zIndex: "99998", cursor: "pointer",
+            background: "rgba(20,20,30,0.85)",
+            padding: "8px 12px", borderRadius: "50%",
+            border: "2px solid #ff69b4", lineHeight: "1", userSelect: "none",
+        });
+        btn.onclick = () => { suppressChat = !suppressChat; saveData(); updateSuppressButton(); };
+        document.body.appendChild(btn);
+        updateSuppressButton();
+    }
+
+    function updateSuppressButton() {
+        const btn = document.getElementById("rw-suppress-btn");
+        if (!btn) return;
+        btn.textContent   = suppressChat ? "🔇" : "💬";
+        btn.title         = suppressChat ? "Chat muted — emotes fire silently (click to unmute)" : "Chat enabled (click to mute)";
+        btn.style.color       = suppressChat ? "#888" : "#ff69b4";
+        btn.style.borderColor = suppressChat ? "#555" : "#ff69b4";
+    }
+
+    // ====================== TARGET SELECTOR ======================
+
+    function createTargetButton() {
+        const btn = document.createElement("div");
+        btn.id = "rw-target-btn";
+        Object.assign(btn.style, {
+            position: "fixed", right: "20px", top: "232px",
+            fontSize: "13px", zIndex: "99998", cursor: "pointer",
+            background: "rgba(20,20,30,0.85)", color: "#ff69b4",
+            padding: "5px 10px", borderRadius: "20px",
+            border: "2px solid #ff69b4", lineHeight: "1.4",
+            userSelect: "none", maxWidth: "130px",
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        });
+        btn.onclick = openTargetPicker;
+        document.body.appendChild(btn);
+        updateTargetButton();
+    }
+
+    function updateTargetButton() {
+        const btn = document.getElementById("rw-target-btn");
+        if (!btn) return;
+        if (currentTarget) {
+            btn.textContent       = `🎯 ${currentTarget.name}`;
+            btn.title             = `Target: ${currentTarget.name} — [Name] in chat text is replaced (click to change)`;
+            btn.style.color       = "#ffd700";
+            btn.style.borderColor = "#ffd700";
+        } else {
+            btn.textContent       = "🎯";
+            btn.title             = "No target — click to pick one. Use [Name] in emote text to insert their name.";
+            btn.style.color       = "#ff69b4";
+            btn.style.borderColor = "#ff69b4";
+        }
+    }
+
+    function openTargetPicker() {
+        document.getElementById("rw-target-picker")?.remove();
+        const chars = (typeof ChatRoomCharacter !== "undefined" ? ChatRoomCharacter : [])
+            .filter(c => c !== Player && c.Name);
+
+        const menu = document.createElement("div");
+        menu.id = "rw-target-picker";
+        Object.assign(menu.style, {
+            position: "fixed", right: "160px", top: "232px",
+            background: "#1a1a2e", border: "1.5px solid #ff69b4",
+            borderRadius: "8px", zIndex: "100001",
+            fontFamily: "Arial,sans-serif", fontSize: "13px",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.6)",
+            overflow: "hidden", minWidth: "130px",
+        });
+
+        const makeItem = (label, action, color) => {
+            const el = document.createElement("div");
+            el.textContent = label;
+            Object.assign(el.style, {
+                padding: "8px 14px", cursor: "pointer",
+                color: color || "#eee", borderBottom: "1px solid #2a2a3a",
+            });
+            el.onmouseenter = () => el.style.background = "#2a2a3a";
+            el.onmouseleave = () => el.style.background = "";
+            el.onclick = () => { action(); menu.remove(); };
+            return el;
+        };
+
+        menu.appendChild(makeItem("✕  No target", () => { currentTarget = null; updateTargetButton(); }, "#aaa"));
+        if (!chars.length) {
+            menu.appendChild(makeItem("(no one else here)", () => {}, "#555"));
+        } else {
+            chars.forEach(c => menu.appendChild(
+                makeItem(c.Name, () => { currentTarget = {name: c.Name}; updateTargetButton(); })
+            ));
+        }
+
+        document.body.appendChild(menu);
+        setTimeout(() => {
+            const close = e => {
+                if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener("click", close); }
+            };
+            document.addEventListener("click", close);
+        }, 0);
+    }
+
     // ====================== ITALIC CHAT HOOK ======================
     // Intercepts Enter on BC's chat input: if the message is *wrapped in asterisks*,
     // re-send it as an Emote so BC renders it italic instead of plain text.
@@ -748,13 +977,32 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (e.key === triggerKey && triggerMode === "hold") hideWheel();
     });
 
+    // Keys 1–8: fire the corresponding emote slot directly without opening the wheel
+    document.addEventListener("keydown", e => {
+        if (wheelActive) return;
+        const tag = document.activeElement?.tagName?.toLowerCase();
+        if (tag === "input" || tag === "textarea") return;
+        const n = parseInt(e.key);
+        if (n >= 1 && n <= 8) {
+            const emotes = packs[currentPack] || [];
+            const emote  = emotes[n - 1];
+            if (emote && !isOnCooldown(emote)) {
+                emoteLastUsed[emote.id] = Date.now();
+                performEmote(emote);
+                e.preventDefault();
+            }
+        }
+    });
+
     // ====================== START ======================
     setTimeout(() => {
         createSettingsButton();
         createPackSwitcher();
+        createSuppressButton();
+        createTargetButton();
         hookItalicChat();
         console.log(
-            "%c✅ BC Reaction Wheel v1.2.0 loaded! Hold Ctrl to open. Click \u2699 for settings.",
+            "%c✅ BC Reaction Wheel v1.3.0 loaded! Hold Ctrl to open. Keys 1–8 fire emotes. Click \u2699 for settings.",
             "color:#ff69b4;font-weight:bold"
         );
     }, 2000);
