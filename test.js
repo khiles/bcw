@@ -64,6 +64,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     let currentTarget  = null;    // {name: string} | null
     let idlePackName   = "";      // pack to draw random idle emotes from ("" = disabled)
     let idleMinutes    = 0;       // minutes before idle emote fires (0 = disabled)
+    let sidebarCollapsed = false; // sidebar collapsed state
     let lastActivity   = Date.now();
     let wheelActive    = false;
     let selected = -1;
@@ -81,16 +82,17 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 currentPack  = data.currentPack  || "Default";
                 triggerMode  = data.triggerMode  || "hold";
                 triggerKey   = data.triggerKey   || "Control";
-                suppressChat = data.suppressChat || false;
-                idlePackName = data.idlePackName || "";
-                idleMinutes  = data.idleMinutes  || 0;
+                suppressChat     = data.suppressChat     || false;
+                idlePackName     = data.idlePackName     || "";
+                idleMinutes      = data.idleMinutes      || 0;
+                sidebarCollapsed = data.sidebarCollapsed || false;
             }
         } catch(err) { console.error("[ReactionWheel] Load error:", err); }
     }
     function saveData() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
             packs, currentPack, triggerMode, triggerKey,
-            suppressChat, idlePackName, idleMinutes,
+            suppressChat, idlePackName, idleMinutes, sidebarCollapsed,
         }));
     }
     loadData();
@@ -405,20 +407,82 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
 
     // ====================== SETTINGS MODAL ======================
+    // ====================== COLLAPSIBLE SIDEBAR ======================
+
+    function createSidebar() {
+        if (document.getElementById("rw-sidebar")) return;
+
+        const sidebar = document.createElement("div");
+        sidebar.id = "rw-sidebar";
+        Object.assign(sidebar.style, {
+            position: "fixed", right: "20px", top: "80px",
+            zIndex: "99998",
+            display: "flex", flexDirection: "column",
+            gap: "8px", alignItems: "flex-end",
+            opacity: "0.25",
+            transition: "opacity 0.25s ease",
+        });
+        // Fade fully opaque on hover, back to ghost when mouse leaves
+        sidebar.onmouseenter = () => sidebar.style.opacity = "1";
+        sidebar.onmouseleave = () => sidebar.style.opacity = "0.25";
+
+        // Toggle button — always visible
+        const toggle = document.createElement("div");
+        toggle.id = "rw-sidebar-toggle";
+        Object.assign(toggle.style, {
+            cursor: "pointer", userSelect: "none",
+            background: "rgba(20,20,30,0.85)", color: "#ff69b4",
+            padding: "4px 11px", borderRadius: "12px",
+            border: "1.5px solid #ff69b4",
+            fontSize: "14px", lineHeight: "1.6",
+        });
+        toggle.onclick = toggleSidebar;
+        sidebar.appendChild(toggle);
+
+        document.body.appendChild(sidebar);
+        applySidebarState(); // set initial toggle label
+    }
+
+    function toggleSidebar() {
+        sidebarCollapsed = !sidebarCollapsed;
+        saveData();
+        applySidebarState();
+    }
+
+    function applySidebarState() {
+        const sidebar = document.getElementById("rw-sidebar");
+        const toggle  = document.getElementById("rw-sidebar-toggle");
+        if (!sidebar || !toggle) return;
+        toggle.textContent = sidebarCollapsed ? "»" : "«";
+        toggle.title       = sidebarCollapsed ? "Expand toolbar" : "Collapse toolbar";
+        // Hide / show every child after the toggle (index 0)
+        Array.from(sidebar.children).forEach((child, i) => {
+            if (i === 0) return;
+            child.style.display = sidebarCollapsed ? "none" : "";
+        });
+    }
+
+    // Append an element to the sidebar (below the toggle)
+    function sidebarAppend(el) {
+        const sidebar = document.getElementById("rw-sidebar");
+        if (!sidebar) return;
+        sidebar.appendChild(el);
+        if (sidebarCollapsed) el.style.display = "none";
+    }
+
     function createSettingsButton() {
         const btn = document.createElement("div");
         btn.id = "rw-settings-btn";
         btn.textContent = "\u2699"; // gear
         Object.assign(btn.style, {
-            position: "fixed", right: "20px", top: "80px",
-            fontSize: "24px", zIndex: "99998", cursor: "pointer",
+            fontSize: "24px", cursor: "pointer",
             background: "rgba(20,20,30,0.85)", color: "#ff69b4",
             padding: "8px 12px", borderRadius: "50%",
             border: "2px solid #ff69b4", lineHeight: "1", userSelect: "none",
         });
         btn.title = "Reaction Wheel Settings";
         btn.onclick = openSettingsModal;
-        document.body.appendChild(btn);
+        sidebarAppend(btn);
     }
 
     function mkInput(id, label, type, placeholder) {
@@ -791,8 +855,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         const el = document.createElement("div");
         el.id = "rw-pack-switcher";
         Object.assign(el.style, {
-            position: "fixed", right: "20px", top: "128px",
-            zIndex: "99998", fontFamily: "Arial,sans-serif", fontSize: "12px",
+            fontFamily: "Arial,sans-serif", fontSize: "12px",
             background: "rgba(20,20,30,0.85)", color: "#ff69b4",
             border: "1.5px solid #ff69b4", borderRadius: "20px",
             padding: "4px 10px", userSelect: "none",
@@ -812,7 +875,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         next.title = "Next pack";
 
         el.append(prev, name, next);
-        document.body.appendChild(el);
+        sidebarAppend(el);
 
         prev.addEventListener("click", e => { e.stopPropagation(); cyclePack(-1); });
         next.addEventListener("click", e => { e.stopPropagation(); cyclePack(+1); });
@@ -843,14 +906,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         const btn = document.createElement("div");
         btn.id = "rw-suppress-btn";
         Object.assign(btn.style, {
-            position: "fixed", right: "20px", top: "176px",
-            fontSize: "20px", zIndex: "99998", cursor: "pointer",
+            fontSize: "20px", cursor: "pointer",
             background: "rgba(20,20,30,0.85)",
             padding: "8px 12px", borderRadius: "50%",
             border: "2px solid #ff69b4", lineHeight: "1", userSelect: "none",
         });
         btn.onclick = () => { suppressChat = !suppressChat; saveData(); updateSuppressButton(); };
-        document.body.appendChild(btn);
+        sidebarAppend(btn);
         updateSuppressButton();
     }
 
@@ -869,8 +931,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         const btn = document.createElement("div");
         btn.id = "rw-target-btn";
         Object.assign(btn.style, {
-            position: "fixed", right: "20px", top: "232px",
-            fontSize: "13px", zIndex: "99998", cursor: "pointer",
+            fontSize: "13px", cursor: "pointer",
             background: "rgba(20,20,30,0.85)", color: "#ff69b4",
             padding: "5px 10px", borderRadius: "20px",
             border: "2px solid #ff69b4", lineHeight: "1.4",
@@ -878,7 +939,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         });
         btn.onclick = openTargetPicker;
-        document.body.appendChild(btn);
+        sidebarAppend(btn);
         updateTargetButton();
     }
 
@@ -903,10 +964,15 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         const chars = (typeof ChatRoomCharacter !== "undefined" ? ChatRoomCharacter : [])
             .filter(c => c !== Player && c.Name);
 
+        const btn  = document.getElementById("rw-target-btn");
+        const rect = btn ? btn.getBoundingClientRect() : {left: window.innerWidth - 160, top: 232};
+
         const menu = document.createElement("div");
         menu.id = "rw-target-picker";
         Object.assign(menu.style, {
-            position: "fixed", right: "160px", top: "232px",
+            position: "fixed",
+            right: (window.innerWidth - rect.left + 8) + "px",
+            top:   rect.top + "px",
             background: "#1a1a2e", border: "1.5px solid #ff69b4",
             borderRadius: "8px", zIndex: "100001",
             fontFamily: "Arial,sans-serif", fontSize: "13px",
@@ -996,6 +1062,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     // ====================== START ======================
     setTimeout(() => {
+        createSidebar();          // container must exist before children
         createSettingsButton();
         createPackSwitcher();
         createSuppressButton();
