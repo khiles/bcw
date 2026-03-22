@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BC Reaction Wheel - Fully Featured
 // @namespace    http://khile.dev/
-// @version      1.3.0
+// @version      1.4.0
 // @description  Beautiful radial emote wheel with full editor, packs & more
 // @author       Khile
 // @match        https://www.bondageprojects.com/club_game/*
@@ -22,7 +22,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     const modApi = bcModSdk.registerMod({
         name: "ReactionWheel",
         fullName: "Khile's Reaction Wheel",
-        version: "1.3.0",
+        version: "1.4.0",
         repository: "https://github.com/yourname/bc-reaction-wheel"
     });
 
@@ -67,6 +67,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     let sidebarCollapsed = false; // sidebar collapsed state
     let sidebarX = null;          // null = use default right-edge position; otherwise left px
     let sidebarY = 80;            // top px
+    let hudX = null;              // null = default centred-top; otherwise left px
+    let hudY = null;              // null = default 14 px from top; otherwise top px
+    let emoteHistory = [];        // [{emote, packName}]  max 10
+    let pinnedEmotes = [null, null, null, null]; // {packName, emoteName} | null  per slot 1-4
     let lastActivity   = Date.now();
     let wheelActive    = false;
     let selected = -1;
@@ -88,8 +92,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 idlePackName     = data.idlePackName     || "";
                 idleMinutes      = data.idleMinutes      || 0;
                 sidebarCollapsed = data.sidebarCollapsed || false;
-                sidebarX         = data.sidebarX != null ? data.sidebarX : null;
-                sidebarY         = data.sidebarY != null ? data.sidebarY : 80;
+                sidebarX         = data.sidebarX     != null ? data.sidebarX     : null;
+                sidebarY         = data.sidebarY     != null ? data.sidebarY     : 80;
+                hudX             = data.hudX         != null ? data.hudX         : null;
+                hudY             = data.hudY         != null ? data.hudY         : null;
+                emoteHistory     = data.emoteHistory || [];
+                pinnedEmotes     = data.pinnedEmotes || [null, null, null, null];
             }
         } catch(err) { console.error("[ReactionWheel] Load error:", err); }
     }
@@ -98,6 +106,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             packs, currentPack, triggerMode, triggerKey,
             suppressChat, idlePackName, idleMinutes,
             sidebarCollapsed, sidebarX, sidebarY,
+            hudX, hudY, emoteHistory, pinnedEmotes,
         }));
     }
     loadData();
@@ -334,52 +343,83 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     let _hudTimer = null;
 
-    function showHUD(emote, durationMs) {
-        hideHUD();
+    function getOrCreateHUD() {
+        let hud = document.getElementById("rw-hud");
+        if (hud) return hud;
 
-        const hud = document.createElement("div");
+        hud = document.createElement("div");
         hud.id = "rw-hud";
         Object.assign(hud.style, {
-            position: "fixed", top: "14px", left: "50%",
-            transform: "translateX(-50%)",
+            position: "fixed", display: "none",
             background: "rgba(20,20,35,0.92)",
             border: "1.5px solid #ff69b4", borderRadius: "10px",
             padding: "8px 18px 10px", zIndex: "99997",
             fontFamily: "Arial,sans-serif", color: "#eee",
             minWidth: "160px", textAlign: "center",
             boxShadow: "0 0 16px rgba(255,105,180,0.35)",
-            pointerEvents: "none",
+            cursor: "grab", userSelect: "none",
         });
+        // Apply saved or default position
+        if (hudX !== null && hudY !== null) {
+            hud.style.left = hudX + "px"; hud.style.top = hudY + "px";
+        } else {
+            hud.style.top = "14px"; hud.style.left = "50%"; hud.style.transform = "translateX(-50%)";
+        }
+        document.body.appendChild(hud);
+
+        // Drag-to-reposition
+        hud.addEventListener("mousedown", e => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            const rect = hud.getBoundingClientRect();
+            const ox = e.clientX - rect.left, oy = e.clientY - rect.top;
+            hud.style.transform = "none";
+            hud.style.left = rect.left + "px";
+            hud.style.cursor = "grabbing";
+            const onMove = ev => {
+                hud.style.left = Math.max(0, Math.min(window.innerWidth  - hud.offsetWidth,  ev.clientX - ox)) + "px";
+                hud.style.top  = Math.max(0, Math.min(window.innerHeight - hud.offsetHeight, ev.clientY - oy)) + "px";
+            };
+            const onUp = () => {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup",   onUp);
+                hud.style.cursor = "grab";
+                hudX = parseInt(hud.style.left); hudY = parseInt(hud.style.top); saveData();
+            };
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup",   onUp);
+        });
+        return hud;
+    }
+
+    function showHUD(emote, durationMs) {
+        clearTimeout(_hudTimer);
+        const hud = getOrCreateHUD();
+        hud.innerHTML = "";
+        hud.style.display = "block";
 
         const label = document.createElement("div");
-        label.style.cssText = "font-size:14px;font-weight:bold;margin-bottom:6px;white-space:nowrap;";
+        label.style.cssText = "font-size:14px;font-weight:bold;margin-bottom:6px;white-space:nowrap;pointer-events:none;";
         label.textContent = `${emote.icon}  ${emote.name}`;
 
         const track = document.createElement("div");
-        Object.assign(track.style, {
-            height: "5px", background: "#333", borderRadius: "3px", overflow: "hidden",
-        });
+        Object.assign(track.style, {height: "5px", background: "#333", borderRadius: "3px", overflow: "hidden", pointerEvents: "none"});
         const bar = document.createElement("div");
         Object.assign(bar.style, {
             height: "100%", width: "100%",
-            background: emote.color || "#ff69b4",
-            borderRadius: "3px",
-            transition: `width ${durationMs}ms linear`,
+            background: emote.color || "#ff69b4", borderRadius: "3px",
+            transition: `width ${durationMs}ms linear`, pointerEvents: "none",
         });
-
         track.appendChild(bar);
-        hud.appendChild(label);
-        hud.appendChild(track);
-        document.body.appendChild(hud);
-
-        // Drain the bar via CSS transition — must start on the next paint
+        hud.append(label, track);
         requestAnimationFrame(() => { bar.style.width = "0%"; });
         _hudTimer = setTimeout(hideHUD, durationMs);
     }
 
     function hideHUD() {
-        if (_hudTimer) { clearTimeout(_hudTimer); _hudTimer = null; }
-        document.getElementById("rw-hud")?.remove();
+        clearTimeout(_hudTimer); _hudTimer = null;
+        const hud = document.getElementById("rw-hud");
+        if (hud) hud.style.display = "none";
     }
 
     function performEmote(emote, _depth = 0) {
@@ -398,6 +438,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         showHUD(emote, duration * 1000);
         if (typeof CharacterRefresh === "function") CharacterRefresh(Player);
         lastActivity = Date.now();
+        recordHistory(emote);
 
         // Follow-up chain: fire the next emote after this one ends + optional extra delay
         if (emote.followUp) {
@@ -566,6 +607,15 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         const idlePackOptions = packNames.map(p =>
             `<option value="${p}" ${idlePackName===p?"selected":""}>${p}</option>`
         ).join("");
+        // All emotes across all packs for the pin dropdowns
+        const allEmoteOptions = i => Object.entries(packs).flatMap(([pn, es]) =>
+            es.map(e => {
+                const val = `${pn}::${e.name}`;
+                const pin = pinnedEmotes[i];
+                const sel = pin && pin.packName === pn && pin.emoteName === e.name ? "selected" : "";
+                return `<option value="${val}" ${sel}>${pn}: ${e.icon||""} ${e.name}</option>`;
+            })
+        ).join("");
 
         const packTabs = packNames.map(p =>
             `<button class="rw-pack-tab" data-pack="${p}"
@@ -665,6 +715,22 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         </div>
 
         <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:6px;color:#aaa;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Pinned slots (keys 1–4)</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                ${[0,1,2,3].map(i => `
+                    <div>
+                        <label style="display:block;font-size:11px;color:#aaa;margin-bottom:2px;">Slot ${i+1}</label>
+                        <select id="rw-pin-${i}"
+                            style="width:100%;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:4px 6px;font-size:12px;">
+                            <option value="">— use pack slot</option>
+                            ${allEmoteOptions(i)}
+                        </select>
+                    </div>
+                `).join("")}
+            </div>
+        </div>
+
+        <div style="margin-bottom:12px;">
             <label style="display:block;margin-bottom:6px;color:#aaa;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Idle Auto-emote</label>
             <div style="display:flex;gap:8px;align-items:center;">
                 <select id="rw-idle-pack"
@@ -679,6 +745,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         </div>
 
         <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding-top:10px;border-top:1px solid #2a2a3a;">
+            <button id="rw-export-url"
+                style="background:#1a1a2e;color:#ff69b4;border:1px solid #ff69b4;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px;">Export URL</button>
             <button id="rw-share-copy"
                 style="background:#1a1a2e;color:#ff69b4;border:1px solid #ff69b4;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px;">Share Pack</button>
             <button id="rw-share-import"
@@ -775,6 +843,20 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         modal.querySelector("#rw-form-cancel").onclick = () => {
             modal.querySelector("#rw-emote-form").style.display = "none";
         };
+
+        [0,1,2,3].forEach(i => {
+            modal.querySelector(`#rw-pin-${i}`).onchange = ev => {
+                const val = ev.target.value;
+                if (!val) { pinnedEmotes[i] = null; }
+                else {
+                    const sep = val.indexOf("::");
+                    pinnedEmotes[i] = {packName: val.slice(0, sep), emoteName: val.slice(sep + 2)};
+                }
+                saveData();
+            };
+        });
+
+        modal.querySelector("#rw-export-url").onclick = exportPacksAsURL;
 
         modal.querySelector("#rw-share-copy").onclick = () => {
             try {
@@ -932,6 +1014,112 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         prev.addEventListener("click", e => { e.stopPropagation(); cyclePack(-1); });
         next.addEventListener("click", e => { e.stopPropagation(); cyclePack(+1); });
         el.addEventListener("wheel", e => { e.preventDefault(); cyclePack(e.deltaY > 0 ? 1 : -1); }, {passive: false});
+    }
+
+    // ====================== EMOTE HISTORY ======================
+
+    function recordHistory(emote) {
+        let packName = currentPack;
+        for (const [name, emotes] of Object.entries(packs)) {
+            if (emotes.some(e => e.id === emote.id)) { packName = name; break; }
+        }
+        emoteHistory.unshift({emote, packName});
+        if (emoteHistory.length > 10) emoteHistory.length = 10;
+        saveData();
+        refreshHistoryPanel();
+    }
+
+    function createHistoryButton() {
+        const btn = document.createElement("div");
+        btn.id = "rw-history-btn";
+        Object.assign(btn.style, {
+            fontSize: "18px", cursor: "pointer",
+            background: "rgba(20,20,30,0.85)", color: "#ff69b4",
+            padding: "6px 12px", borderRadius: "20px",
+            border: "2px solid #ff69b4", lineHeight: "1.4", userSelect: "none",
+        });
+        btn.textContent = "🕐";
+        btn.title = "Emote history (last 10) — click to re-fire";
+        btn.onclick = toggleHistoryPanel;
+        sidebarAppend(btn);
+    }
+
+    function toggleHistoryPanel() {
+        const existing = document.getElementById("rw-history-panel");
+        if (existing) { existing.remove(); return; }
+
+        const sidebar = document.getElementById("rw-sidebar");
+        const rect = sidebar ? sidebar.getBoundingClientRect()
+                             : {left: window.innerWidth - 160, top: 80};
+        const panel = document.createElement("div");
+        panel.id = "rw-history-panel";
+        Object.assign(panel.style, {
+            position: "fixed",
+            right: (window.innerWidth - rect.left + 8) + "px",
+            top: rect.top + "px",
+            background: "#1a1a2e", border: "1.5px solid #ff69b4",
+            borderRadius: "10px", zIndex: "100001",
+            fontFamily: "Arial,sans-serif", fontSize: "13px",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.6)",
+            minWidth: "200px", maxHeight: "320px", overflowY: "auto",
+        });
+        buildHistoryContent(panel);
+        document.body.appendChild(panel);
+
+        setTimeout(() => {
+            const close = e => {
+                const histBtn = document.getElementById("rw-history-btn");
+                if (!panel.contains(e.target) && e.target !== histBtn) {
+                    panel.remove(); document.removeEventListener("click", close);
+                }
+            };
+            document.addEventListener("click", close);
+        }, 0);
+    }
+
+    function buildHistoryContent(panel) {
+        panel.innerHTML = "";
+        const hdr = document.createElement("div");
+        hdr.style.cssText = "padding:8px 14px;color:#aaa;font-size:11px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #2a2a3a;";
+        hdr.textContent = "Recent emotes";
+        panel.appendChild(hdr);
+
+        if (!emoteHistory.length) {
+            const empty = document.createElement("div");
+            empty.style.cssText = "padding:14px;color:#555;";
+            empty.textContent = "Nothing fired yet";
+            panel.appendChild(empty);
+            return;
+        }
+        emoteHistory.forEach(({emote, packName}) => {
+            const row = document.createElement("div");
+            Object.assign(row.style, {
+                padding: "8px 14px", cursor: "pointer",
+                display: "flex", alignItems: "center", gap: "8px",
+                borderBottom: "1px solid #1e1e2e",
+                color: isOnCooldown(emote) ? "#555" : "#eee",
+            });
+            const dot = document.createElement("span");
+            dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${emote.color||"#ff69b4"};flex-shrink:0;display:inline-block;`;
+            const name = document.createElement("span");
+            name.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;";
+            name.textContent = `${emote.icon || ""} ${emote.name}`;
+            const pack = document.createElement("span");
+            pack.style.cssText = "color:#555;font-size:11px;flex-shrink:0;";
+            pack.textContent = packName;
+            row.append(dot, name, pack);
+            row.onmouseenter = () => row.style.background = "#2a2a3a";
+            row.onmouseleave = () => row.style.background = "";
+            row.onclick = () => {
+                if (!isOnCooldown(emote)) { emoteLastUsed[emote.id] = Date.now(); performEmote(emote); }
+            };
+            panel.appendChild(row);
+        });
+    }
+
+    function refreshHistoryPanel() {
+        const panel = document.getElementById("rw-history-panel");
+        if (panel) buildHistoryContent(panel);
     }
 
     // ====================== IDLE AUTO-EMOTE ======================
@@ -1095,15 +1283,25 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (e.key === triggerKey && triggerMode === "hold") hideWheel();
     });
 
-    // Keys 1–8: fire the corresponding emote slot directly without opening the wheel
+    function findPinnedEmote(slotIdx) {
+        const pin = pinnedEmotes[slotIdx];
+        if (!pin) return null;
+        const pack = packs[pin.packName];
+        return pack ? pack.find(e => e.name === pin.emoteName) || null : null;
+    }
+
+    // Keys 1–8: fire emote directly. Slots 1-4 check pins first; `/` opens quick-search.
     document.addEventListener("keydown", e => {
         if (wheelActive) return;
         const tag = document.activeElement?.tagName?.toLowerCase();
         if (tag === "input" || tag === "textarea") return;
+
+        if (e.key === "/") { e.preventDefault(); openQuickSearch(); return; }
+
         const n = parseInt(e.key);
         if (n >= 1 && n <= 8) {
-            const emotes = packs[currentPack] || [];
-            const emote  = emotes[n - 1];
+            let emote = n <= 4 ? findPinnedEmote(n - 1) : null;
+            if (!emote) emote = (packs[currentPack] || [])[n - 1];
             if (emote && !isOnCooldown(emote)) {
                 emoteLastUsed[emote.id] = Date.now();
                 performEmote(emote);
@@ -1112,6 +1310,211 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         }
     });
 
+    // ====================== QUICK-SEARCH ======================
+
+    function openQuickSearch() {
+        if (document.getElementById("rw-search")) return;
+
+        const overlay = document.createElement("div");
+        overlay.id = "rw-search";
+        Object.assign(overlay.style, {
+            position: "fixed", inset: "0",
+            background: "rgba(0,0,0,0.6)", zIndex: "200000",
+            display: "flex", alignItems: "flex-start", justifyContent: "center",
+            paddingTop: "80px",
+        });
+
+        const box = document.createElement("div");
+        Object.assign(box.style, {
+            background: "#1a1a2e", border: "1.5px solid #ff69b4", borderRadius: "12px",
+            width: "340px", maxWidth: "90vw",
+            boxShadow: "0 8px 40px rgba(0,0,0,0.7)", overflow: "hidden",
+            fontFamily: "Arial,sans-serif",
+        });
+
+        const input = document.createElement("input");
+        input.type = "text"; input.placeholder = "Search emotes… (Enter fires first result)";
+        Object.assign(input.style, {
+            width: "100%", boxSizing: "border-box",
+            background: "#222", color: "#eee",
+            border: "none", borderBottom: "1px solid #333",
+            padding: "12px 16px", fontSize: "14px", outline: "none",
+        });
+
+        const results = document.createElement("div");
+        results.style.maxHeight = "260px"; results.style.overflowY = "auto";
+
+        box.append(input, results);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+
+        // Flat list of all emotes across all packs
+        const allEmotes = Object.entries(packs).flatMap(([packName, emotes]) =>
+            emotes.map(e => ({emote: e, packName}))
+        );
+
+        function renderResults(query) {
+            results.innerHTML = "";
+            const q = query.toLowerCase();
+            const filtered = q
+                ? allEmotes.filter(({emote: e}) =>
+                    e.name.toLowerCase().includes(q) ||
+                    (e.icon || "").includes(q) ||
+                    (e.chat || "").toLowerCase().includes(q))
+                : allEmotes.slice(0, 20);
+
+            if (!filtered.length) {
+                results.innerHTML = `<div style="padding:14px 16px;color:#555;">No results</div>`;
+                return;
+            }
+            filtered.forEach(({emote, packName}, i) => {
+                const row = document.createElement("div");
+                Object.assign(row.style, {
+                    padding: "9px 16px", cursor: "pointer",
+                    display: "flex", alignItems: "center", gap: "10px",
+                    borderBottom: "1px solid #1e1e2e",
+                    color: isOnCooldown(emote) ? "#555" : "#eee",
+                });
+                const dot = document.createElement("span");
+                dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${emote.color||"#ff69b4"};flex-shrink:0;display:inline-block;`;
+                const nm  = document.createElement("span"); nm.style.flex = "1";
+                nm.textContent = `${emote.icon || ""} ${emote.name}`;
+                const pk  = document.createElement("span");
+                pk.style.cssText = "color:#555;font-size:11px;";
+                pk.textContent = packName;
+                row.append(dot, nm, pk);
+                row.onmouseenter = () => row.style.background = "#2a2a3a";
+                row.onmouseleave = () => row.style.background = "";
+                row.onclick = () => {
+                    if (!isOnCooldown(emote)) { emoteLastUsed[emote.id] = Date.now(); performEmote(emote); }
+                    overlay.remove();
+                };
+                if (i === 0) row.id = "rw-search-first";
+                results.appendChild(row);
+            });
+        }
+
+        renderResults("");
+        requestAnimationFrame(() => input.focus());
+        input.oninput = () => renderResults(input.value);
+        input.onkeydown = ev => {
+            if (ev.key === "Escape") { overlay.remove(); ev.stopPropagation(); }
+            if (ev.key === "Enter")  { document.getElementById("rw-search-first")?.click(); }
+        };
+        overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+    }
+
+    // ====================== RIGHT-CLICK TO REACT ======================
+
+    function initRightClickReact() {
+        document.addEventListener("contextmenu", e => {
+            const msg = e.target.closest(".ChatMessage");
+            if (!msg) return;
+
+            // Try common BC chat-line sender selectors
+            const senderEl = msg.querySelector(".ChatSender, .ChatMessageName, b, strong");
+            const senderName = senderEl
+                ? senderEl.textContent.replace(/[:\s]+$/, "").trim()
+                : null;
+            if (!senderName || senderName === (typeof Player !== "undefined" && Player?.Name)) return;
+
+            e.preventDefault();
+            showReactMenu(e.clientX, e.clientY, senderName);
+        });
+    }
+
+    function showReactMenu(x, y, senderName) {
+        document.getElementById("rw-react-menu")?.remove();
+
+        const menu = document.createElement("div");
+        menu.id = "rw-react-menu";
+        Object.assign(menu.style, {
+            position: "fixed", left: x + "px", top: y + "px",
+            background: "#1a1a2e", border: "1.5px solid #ff69b4",
+            borderRadius: "8px", zIndex: "200001",
+            fontFamily: "Arial,sans-serif", fontSize: "13px",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.7)",
+            overflow: "hidden", minWidth: "190px",
+        });
+
+        const hdr = document.createElement("div");
+        hdr.style.cssText = "padding:7px 14px;color:#aaa;font-size:11px;border-bottom:1px solid #2a2a3a;";
+        hdr.textContent = `⚡ React to ${senderName}`;
+        menu.appendChild(hdr);
+
+        const emotes = packs[currentPack] || [];
+        (emotes.length ? emotes.slice(0, 10) : [{name: "— no emotes —", icon: "", color: "#555", _empty: true}])
+            .forEach(emote => {
+                const row = document.createElement("div");
+                Object.assign(row.style, {
+                    padding: "8px 14px", cursor: emote._empty ? "default" : "pointer",
+                    color: emote._empty || isOnCooldown(emote) ? "#555" : "#eee",
+                    borderBottom: "1px solid #1e1e2e",
+                    display: "flex", alignItems: "center", gap: "8px",
+                });
+                const dot = document.createElement("span");
+                dot.style.cssText = `width:7px;height:7px;border-radius:50%;background:${emote.color||"#ff69b4"};flex-shrink:0;display:inline-block;`;
+                const lbl = document.createElement("span");
+                lbl.textContent = emote._empty ? emote.name : `${emote.icon || ""} ${emote.name}`;
+                row.append(dot, lbl);
+                if (!emote._empty) {
+                    row.onmouseenter = () => row.style.background = "#2a2a3a";
+                    row.onmouseleave = () => row.style.background = "";
+                    row.onclick = () => {
+                        currentTarget = {name: senderName}; updateTargetButton();
+                        if (!isOnCooldown(emote)) { emoteLastUsed[emote.id] = Date.now(); performEmote(emote); }
+                        menu.remove();
+                    };
+                }
+                menu.appendChild(row);
+            });
+
+        document.body.appendChild(menu);
+        // Nudge into viewport if needed
+        requestAnimationFrame(() => {
+            const r = menu.getBoundingClientRect();
+            if (r.right  > window.innerWidth)  menu.style.left = (x - r.width)  + "px";
+            if (r.bottom > window.innerHeight) menu.style.top  = (y - r.height) + "px";
+        });
+        setTimeout(() => {
+            const close = e => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener("click", close); } };
+            document.addEventListener("click", close);
+        }, 0);
+    }
+
+    // ====================== URL EXPORT / IMPORT ======================
+
+    function exportPacksAsURL() {
+        try {
+            const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(packs))));
+            const url = location.href.split("#")[0] + "#rw=" + encoded;
+            if (navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(url).then(() =>
+                    alert("URL copied!\n\nSend it to someone — when they open it in BC with the script installed, all your packs import automatically.")
+                );
+            } else {
+                prompt("Share this URL:", url);
+            }
+        } catch(err) { alert("Failed to build export URL."); }
+    }
+
+    function checkURLImport() {
+        if (!location.hash.startsWith("#rw=")) return;
+        try {
+            const imported = JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(4)))));
+            if (typeof imported !== "object" || Array.isArray(imported)) return;
+            let count = 0;
+            for (const [name, emotes] of Object.entries(imported)) {
+                if (Array.isArray(emotes)) { packs[name] = emotes; count++; }
+            }
+            if (count) {
+                saveData(); updatePackSwitcher();
+                alert(`Imported ${count} pack(s) from URL!`);
+            }
+            history.replaceState(null, "", location.pathname + location.search);
+        } catch(err) { /* malformed hash — ignore */ }
+    }
+
     // ====================== START ======================
     setTimeout(() => {
         createSidebar();          // container must exist before children
@@ -1119,9 +1522,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         createPackSwitcher();
         createSuppressButton();
         createTargetButton();
+        createHistoryButton();
+        initRightClickReact();
+        checkURLImport();
         hookItalicChat();
         console.log(
-            "%c✅ BC Reaction Wheel v1.3.0 loaded! Hold Ctrl to open. Keys 1–8 fire emotes. Click \u2699 for settings.",
+            "%c✅ BC Reaction Wheel v1.4.0 loaded! Ctrl=wheel · 1-8=hotkeys · /=search · right-click chat to react.",
             "color:#ff69b4;font-weight:bold"
         );
     }, 2000);
