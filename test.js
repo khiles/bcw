@@ -30,12 +30,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     // Maps friendly names to BC facial expression groups + values.
     // CharacterSetFacialExpression accepts a timer (seconds) and auto-reverts.
     const EXPRESSION_MAP = {
-        "Sad":             [{group:"Eyes", expr:"Downed"}, {group:"Mouth", expr:"Sad"}],
+        "Sad":             [{group:"Eyes", expr:"Downed"},   {group:"Mouth", expr:"Sad"}],
         "Blush":           [{group:"Blush", expr:"Medium"}],
         "VeryEmbarrassed": [{group:"Blush", expr:"Extreme"}, {group:"Eyes", expr:"Shy"}],
-        "Smirk":           [{group:"Mouth", expr:"Smirk"}, {group:"Eyes", expr:"Wink"}],
-        "Horny":           [{group:"Eyes", expr:"Lewd"}, {group:"Blush", expr:"High"}, {group:"Mouth", expr:"HalfOpen"}],
-        "Angry":           [{group:"Eyes", expr:"Angry"}, {group:"Mouth", expr:"Angry"}],
+        "Smirk":           [{group:"Mouth", expr:"Smirk"},   {group:"Eyes", expr:"Wink"}],
+        "Horny":           [{group:"Eyes", expr:"Horny"},    {group:"Blush", expr:"High"}, {group:"Mouth", expr:"HalfOpen"}],
+        "Angry":           [{group:"Eyes", expr:"Angry"},    {group:"Mouth", expr:"Angry"}],
     };
 
     // ====================== CONFIG & STORAGE ======================
@@ -89,10 +89,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         return `rgb(${r},${g},${b})`;
     }
 
+    const W = 220; // wheel canvas size
+
     function createWheel() {
         canvas = document.createElement("canvas");
-        canvas.width = 320;
-        canvas.height = 320;
+        canvas.width = W;
+        canvas.height = W;
         Object.assign(canvas.style, {
             position: "fixed",
             left: "50%", top: "50%",
@@ -100,7 +102,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             zIndex: "99999",
             pointerEvents: "auto",
             borderRadius: "50%",
-            boxShadow: "0 0 30px rgba(255,105,180,0.6)",
+            boxShadow: "0 0 20px rgba(255,105,180,0.6)",
         });
         document.body.appendChild(canvas);
         ctx = canvas.getContext("2d");
@@ -108,15 +110,15 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     function drawWheel() {
         if (!canvas || !ctx) return;
-        ctx.clearRect(0, 0, 320, 320);
+        const half = W / 2;
+        ctx.clearRect(0, 0, W, W);
         const emotes = packs[currentPack] || [];
         if (!emotes.length) return;
         const n = emotes.length;
         const slice = (Math.PI * 2) / n;
-        const cx = 160, cy = 160, r = 140;
+        const cx = half, cy = half, r = half - 10;
 
         emotes.forEach((e, i) => {
-            // Start slices from top (offset by -PI/2)
             const start = i * slice - Math.PI / 2;
             const end   = start + slice;
             const mid   = (start + end) / 2;
@@ -127,37 +129,38 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             ctx.fillStyle = selected === i ? lightenHex(e.color) : e.color;
             ctx.fill();
             ctx.strokeStyle = "#111";
-            ctx.lineWidth = 3;
+            ctx.lineWidth = 2;
             ctx.stroke();
 
             // Icon + label
-            const lx = cx + Math.cos(mid) * 90;
-            const ly = cy + Math.sin(mid) * 90;
+            const lx = cx + Math.cos(mid) * (r * 0.62);
+            const ly = cy + Math.sin(mid) * (r * 0.62);
             ctx.save();
             ctx.translate(lx, ly);
-            ctx.font = "bold 26px Arial";
+            ctx.font = "bold 18px Arial";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillStyle = "#111";
-            ctx.fillText(e.icon, 0, -10);
-            ctx.font = "bold 11px Arial";
+            ctx.fillText(e.icon, 0, -7);
+            ctx.font = "bold 9px Arial";
             ctx.strokeStyle = "#000";
-            ctx.lineWidth = 3;
-            ctx.strokeText(e.name, 0, 10);
+            ctx.lineWidth = 2;
+            ctx.strokeText(e.name, 0, 7);
             ctx.fillStyle = selected === i ? "#000" : "#fff";
-            ctx.fillText(e.name, 0, 10);
+            ctx.fillText(e.name, 0, 7);
             ctx.restore();
         });
 
         // Center cancel circle
+        const cr = 28;
         ctx.beginPath();
-        ctx.arc(cx, cy, 40, 0, Math.PI * 2);
+        ctx.arc(cx, cy, cr, 0, Math.PI * 2);
         ctx.fillStyle = "#1a1a1a";
         ctx.fill();
         ctx.strokeStyle = "#555";
         ctx.lineWidth = 2;
         ctx.stroke();
-        ctx.font = "bold 20px Arial";
+        ctx.font = "bold 15px Arial";
         ctx.fillStyle = "#888";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -186,12 +189,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     function onMouseMove(e) {
         if (!canvas) return;
+        const half = W / 2;
         const rect = canvas.getBoundingClientRect();
-        const cx = rect.left + 160, cy = rect.top + 160;
+        const cx = rect.left + half, cy = rect.top + half;
         const dx = e.clientX - cx, dy = e.clientY - cy;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist < 42) {
+        if (dist < 30) {
             // Inside center cancel zone — no selection
             selected = -1;
         } else {
