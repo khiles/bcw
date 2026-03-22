@@ -255,24 +255,34 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         });
     }
 
-    function refreshCharacter(push = false) {
-        // push=true syncs ActivePose to the server so room updates don't overwrite it
-        if (typeof CharacterRefresh === "function") CharacterRefresh(Player, push);
-    }
+    // ====================== POSE OVERRIDE ======================
+    // BC's game loop calls CharacterRefresh every frame and its pose validation
+    // strips poses that aren't "allowed" by equipped items.  We fight this by
+    // hooking CharacterRefresh via modSDK: whenever our forced pose is active we
+    // re-inject it both before and after the original function runs, so the
+    // rendered frame always shows the correct pose regardless of BC's validation.
+
+    let _forcedPose = null; // string while active, null otherwise
+
+    modApi.hookFunction("CharacterRefresh", 0, ([C, Push], next) => {
+        if (_forcedPose && C === Player) Player.ActivePose = [_forcedPose];
+        const result = next([C, Push]);
+        if (_forcedPose && C === Player) Player.ActivePose = [_forcedPose];
+        return result;
+    });
 
     function applyPose(poseName, durationMs) {
         if (!poseName) return;
         const savedPose = Array.isArray(Player.ActivePose) ? [...Player.ActivePose] : [];
-        try {
-            Player.ActivePose = [poseName];
-            refreshCharacter(true); // push so server doesn't immediately revert it
-        } catch(err) { console.warn("[ReactionWheel] Pose error:", err); }
+
+        _forcedPose = poseName;
+        Player.ActivePose = [poseName];
+        if (typeof CharacterRefresh === "function") CharacterRefresh(Player);
 
         setTimeout(() => {
-            try {
-                Player.ActivePose = savedPose;
-                refreshCharacter(true); // push restoration too
-            } catch(err) {}
+            _forcedPose = null;
+            Player.ActivePose = savedPose;
+            if (typeof CharacterRefresh === "function") CharacterRefresh(Player);
         }, durationMs);
     }
 
@@ -281,20 +291,15 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         const duration = emote.duration || 5;
 
         if (emote.chat) sendChat(emote.chat);
-
-        // Expressions: CharacterSetFacialExpression handles auto-revert via its timer param
         applyExpression(emote.expr, duration);
-
-        // Pose: save/restore manually
         applyPose(emote.pose, duration * 1000);
 
-        // Arousal: stored in Player.ArousalSettings.Progress
         if (emote.arousal && Player.ArousalSettings) {
             const current = Player.ArousalSettings.Progress || 0;
             Player.ArousalSettings.Progress = Math.min(100, current + emote.arousal);
         }
 
-        refreshCharacter(true);
+        if (typeof CharacterRefresh === "function") CharacterRefresh(Player);
     }
 
     // ====================== SETTINGS MODAL ======================
