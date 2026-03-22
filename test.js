@@ -255,9 +255,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         });
     }
 
-    function refreshCharacter() {
-        // CharacterRefresh is the correct BC API; PlayerRefresh does not exist
-        if (typeof CharacterRefresh === "function") CharacterRefresh(Player);
+    function refreshCharacter(push = false) {
+        // push=true syncs ActivePose to the server so room updates don't overwrite it
+        if (typeof CharacterRefresh === "function") CharacterRefresh(Player, push);
     }
 
     function applyPose(poseName, durationMs) {
@@ -265,13 +265,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         const savedPose = Array.isArray(Player.ActivePose) ? [...Player.ActivePose] : [];
         try {
             Player.ActivePose = [poseName];
-            refreshCharacter();
+            refreshCharacter(true); // push so server doesn't immediately revert it
         } catch(err) { console.warn("[ReactionWheel] Pose error:", err); }
 
         setTimeout(() => {
             try {
                 Player.ActivePose = savedPose;
-                refreshCharacter();
+                refreshCharacter(true); // push restoration too
             } catch(err) {}
         }, durationMs);
     }
@@ -294,7 +294,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             Player.ArousalSettings.Progress = Math.min(100, current + emote.arousal);
         }
 
-        refreshCharacter();
+        refreshCharacter(true);
     }
 
     // ====================== SETTINGS MODAL ======================
