@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BC Reaction Wheel - Fully Featured
 // @namespace    http://khile.dev/
-// @version      1.1.0
+// @version      1.2.0
 // @description  Beautiful radial emote wheel with full editor, packs & more
 // @author       Khile
 // @match        https://www.bondageprojects.com/club_game/*
@@ -22,7 +22,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     const modApi = bcModSdk.registerMod({
         name: "ReactionWheel",
         fullName: "Khile's Reaction Wheel",
-        version: "1.1.0",
+        version: "1.2.0",
         repository: "https://github.com/yourname/bc-reaction-wheel"
     });
 
@@ -37,6 +37,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         "Horny":           [{group:"Eyes", expr:"Horny"},    {group:"Blush", expr:"High"}, {group:"Mouth", expr:"HalfOpen"}],
         "Angry":           [{group:"Eyes", expr:"Angry"},    {group:"Mouth", expr:"Angry"}],
     };
+
+    // Common BC pose names (autocomplete suggestions in the emote editor)
+    const BC_POSES = [
+        "Kneel", "KneelingSpread", "LegsClosed", "LegsOpen",
+        "Spread", "AllFours", "Hogtied", "SitFloor",
+    ];
 
     // ====================== CONFIG & STORAGE ======================
     let currentPack = "Default";
@@ -286,6 +292,60 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         }, durationMs);
     }
 
+    // ====================== ACTIVE EMOTE HUD ======================
+    // Small overlay at the top-centre that shows the active emote name and a
+    // draining progress bar for the duration, then removes itself automatically.
+
+    let _hudTimer = null;
+
+    function showHUD(emote, durationMs) {
+        hideHUD();
+
+        const hud = document.createElement("div");
+        hud.id = "rw-hud";
+        Object.assign(hud.style, {
+            position: "fixed", top: "14px", left: "50%",
+            transform: "translateX(-50%)",
+            background: "rgba(20,20,35,0.92)",
+            border: "1.5px solid #ff69b4", borderRadius: "10px",
+            padding: "8px 18px 10px", zIndex: "99997",
+            fontFamily: "Arial,sans-serif", color: "#eee",
+            minWidth: "160px", textAlign: "center",
+            boxShadow: "0 0 16px rgba(255,105,180,0.35)",
+            pointerEvents: "none",
+        });
+
+        const label = document.createElement("div");
+        label.style.cssText = "font-size:14px;font-weight:bold;margin-bottom:6px;white-space:nowrap;";
+        label.textContent = `${emote.icon}  ${emote.name}`;
+
+        const track = document.createElement("div");
+        Object.assign(track.style, {
+            height: "5px", background: "#333", borderRadius: "3px", overflow: "hidden",
+        });
+        const bar = document.createElement("div");
+        Object.assign(bar.style, {
+            height: "100%", width: "100%",
+            background: emote.color || "#ff69b4",
+            borderRadius: "3px",
+            transition: `width ${durationMs}ms linear`,
+        });
+
+        track.appendChild(bar);
+        hud.appendChild(label);
+        hud.appendChild(track);
+        document.body.appendChild(hud);
+
+        // Drain the bar via CSS transition — must start on the next paint
+        requestAnimationFrame(() => { bar.style.width = "0%"; });
+        _hudTimer = setTimeout(hideHUD, durationMs);
+    }
+
+    function hideHUD() {
+        if (_hudTimer) { clearTimeout(_hudTimer); _hudTimer = null; }
+        document.getElementById("rw-hud")?.remove();
+    }
+
     function performEmote(emote) {
         if (!emote) return;
         const duration = emote.duration || 5;
@@ -299,6 +359,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             Player.ArousalSettings.Progress = Math.min(100, current + emote.arousal);
         }
 
+        showHUD(emote, duration * 1000);
         if (typeof CharacterRefresh === "function") CharacterRefresh(Player);
     }
 
@@ -325,6 +386,19 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             <input id="${id}" type="${type}" placeholder="${placeholder}"
                 style="width:100%;box-sizing:border-box;background:#222;color:#eee;
                        border:1px solid #555;border-radius:6px;padding:5px 7px;font-size:13px;">
+        </div>`;
+    }
+
+    // Like mkInput but adds a <datalist> for autocomplete suggestions (free text still allowed)
+    function mkDataInput(id, label, options, placeholder) {
+        const listId = id + "-list";
+        const opts = ["", ...options].map(o => `<option value="${o}">`).join("");
+        return `<div>
+            <label style="display:block;font-size:12px;color:#aaa;margin-bottom:3px;">${label}</label>
+            <input id="${id}" list="${listId}" autocomplete="off" placeholder="${placeholder || ""}"
+                style="width:100%;box-sizing:border-box;background:#222;color:#eee;
+                       border:1px solid #555;border-radius:6px;padding:5px 7px;font-size:13px;">
+            <datalist id="${listId}">${opts}</datalist>
         </div>`;
     }
 
@@ -410,8 +484,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 ${mkInput("rw-f-color",    "Color",        "color",  "#ff69b4")}
                 ${mkInput("rw-f-duration", "Duration (s)", "number", "5")}
                 ${mkInput("rw-f-arousal",  "Arousal +",    "number", "5")}
-                ${mkInput("rw-f-expr",     "Expression",   "text",   "Sad")}
-                ${mkInput("rw-f-pose",     "Pose",         "text",   "Kneel")}
+                ${mkDataInput("rw-f-expr", "Expression", Object.keys(EXPRESSION_MAP), "Sad")}
+                ${mkDataInput("rw-f-pose", "Pose",       BC_POSES,                  "Kneel")}
             </div>
             <div>
                 <label style="display:block;font-size:12px;color:#aaa;margin-bottom:3px;">Chat / emote text</label>
@@ -487,13 +561,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         };
 
         modal.querySelectorAll(".rw-pack-tab").forEach(btn => {
-            btn.onclick = () => { currentPack = btn.dataset.pack; saveData(); refreshModal(); };
+            btn.onclick = () => { currentPack = btn.dataset.pack; saveData(); refreshModal(); updatePackSwitcher(); };
         });
 
         modal.querySelector("#rw-add-pack").onclick = () => {
             const name = prompt("New pack name:");
             if (name && !packs[name]) {
-                packs[name] = []; currentPack = name; saveData(); refreshModal();
+                packs[name] = []; currentPack = name; saveData(); refreshModal(); updatePackSwitcher();
             }
         };
 
@@ -502,7 +576,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             if (!confirm(`Delete pack "${currentPack}"?`)) return;
             delete packs[currentPack];
             currentPack = Object.keys(packs)[0];
-            saveData(); refreshModal();
+            saveData(); refreshModal(); updatePackSwitcher();
         };
 
         modal.querySelectorAll(".rw-edit-emote").forEach(btn => {
@@ -543,7 +617,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                         if (data.currentPack && packs[data.currentPack]) currentPack = data.currentPack;
                         if (data.triggerMode) triggerMode = data.triggerMode;
                         if (data.triggerKey)  triggerKey  = data.triggerKey;
-                        saveData(); refreshModal();
+                        saveData(); refreshModal(); updatePackSwitcher();
                     } catch(err) { alert("Invalid JSON file."); }
                 };
                 reader.readAsText(file);
@@ -590,6 +664,58 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     function refreshModal() { closeSettingsModal(); openSettingsModal(); }
     function closeSettingsModal() { document.getElementById("rw-modal")?.remove(); }
 
+    // ====================== QUICK PACK SWITCHER ======================
+    // Small ◀ Pack ▶ pill sitting below the gear button.
+    // Left-arrow / scroll-up = previous pack.  Right-arrow / scroll-down = next pack.
+
+    function cyclePack(dir) {
+        const names = Object.keys(packs);
+        const idx = names.indexOf(currentPack);
+        currentPack = names[(idx + dir + names.length) % names.length];
+        saveData();
+        updatePackSwitcher();
+        if (wheelActive) drawWheel();
+    }
+
+    function updatePackSwitcher() {
+        const el = document.getElementById("rw-pack-name");
+        if (el) el.textContent = currentPack;
+    }
+
+    function createPackSwitcher() {
+        if (document.getElementById("rw-pack-switcher")) return;
+
+        const el = document.createElement("div");
+        el.id = "rw-pack-switcher";
+        Object.assign(el.style, {
+            position: "fixed", right: "20px", top: "128px",
+            zIndex: "99998", fontFamily: "Arial,sans-serif", fontSize: "12px",
+            background: "rgba(20,20,30,0.85)", color: "#ff69b4",
+            border: "1.5px solid #ff69b4", borderRadius: "20px",
+            padding: "4px 10px", userSelect: "none",
+            display: "flex", alignItems: "center", gap: "5px",
+            maxWidth: "130px",
+        });
+
+        const prev = Object.assign(document.createElement("span"), {textContent: "◀"});
+        Object.assign(prev.style, {cursor: "pointer", opacity: "0.7", flexShrink: "0"});
+        prev.title = "Previous pack";
+
+        const name = Object.assign(document.createElement("span"), {id: "rw-pack-name", textContent: currentPack});
+        name.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:center;";
+
+        const next = Object.assign(document.createElement("span"), {textContent: "▶"});
+        Object.assign(next.style, {cursor: "pointer", opacity: "0.7", flexShrink: "0"});
+        next.title = "Next pack";
+
+        el.append(prev, name, next);
+        document.body.appendChild(el);
+
+        prev.addEventListener("click", e => { e.stopPropagation(); cyclePack(-1); });
+        next.addEventListener("click", e => { e.stopPropagation(); cyclePack(+1); });
+        el.addEventListener("wheel", e => { e.preventDefault(); cyclePack(e.deltaY > 0 ? 1 : -1); }, {passive: false});
+    }
+
     // ====================== ITALIC CHAT HOOK ======================
     // Intercepts Enter on BC's chat input: if the message is *wrapped in asterisks*,
     // re-send it as an Emote so BC renders it italic instead of plain text.
@@ -625,9 +751,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     // ====================== START ======================
     setTimeout(() => {
         createSettingsButton();
+        createPackSwitcher();
         hookItalicChat();
         console.log(
-            "%c✅ BC Reaction Wheel v1.1.0 loaded! Hold Ctrl to open. Click \u2699 for settings.",
+            "%c✅ BC Reaction Wheel v1.2.0 loaded! Hold Ctrl to open. Click \u2699 for settings.",
             "color:#ff69b4;font-weight:bold"
         );
     }, 2000);
