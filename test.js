@@ -89,16 +89,27 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         return `rgb(${r},${g},${b})`;
     }
 
-    const W = 220; // wheel canvas size
+    const W = 220; // canvas resolution (px) — CSS display size is corrected for BC's body zoom
+
+    // BC sets document.body { zoom: X } to scale the game to the window.
+    // A fixed-position element inherits that zoom, so we divide the CSS size by it
+    // to make the wheel appear at W screen pixels regardless of zoom level.
+    function getBodyZoom() {
+        const z = parseFloat(window.getComputedStyle(document.body).zoom);
+        return (z && isFinite(z)) ? z : 1;
+    }
 
     function createWheel() {
         canvas = document.createElement("canvas");
         canvas.width = W;
         canvas.height = W;
+        const zoom = getBodyZoom();
+        const cssSize = Math.round(W / zoom) + "px";
         Object.assign(canvas.style, {
             position: "fixed",
             left: "50%", top: "50%",
             transform: "translate(-50%, -50%)",
+            width: cssSize, height: cssSize,
             zIndex: "99999",
             pointerEvents: "auto",
             borderRadius: "50%",
@@ -189,17 +200,18 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     function onMouseMove(e) {
         if (!canvas) return;
-        const half = W / 2;
         const rect = canvas.getBoundingClientRect();
-        const cx = rect.left + half, cy = rect.top + half;
+        // Use the actual rendered rect centre (accounts for zoom-corrected CSS size)
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top  + rect.height / 2;
         const dx = e.clientX - cx, dy = e.clientY - cy;
         const dist = Math.sqrt(dx * dx + dy * dy);
+        // Cancel-zone radius: 28 canvas-px scaled to screen-px
+        const cancelPx = 28 * (rect.width / W);
 
-        if (dist < 30) {
-            // Inside center cancel zone — no selection
+        if (dist < cancelPx) {
             selected = -1;
         } else {
-            // Angle from top, clockwise
             let angle = Math.atan2(dy, dx) + Math.PI / 2;
             if (angle < 0) angle += Math.PI * 2;
             const emotes = packs[currentPack] || [];
