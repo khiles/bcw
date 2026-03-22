@@ -464,8 +464,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             position: "fixed", zIndex: "99998",
             display: "flex", flexDirection: "column",
             gap: "6px", alignItems: "stretch",
-            opacity: "0.25",
-            transition: "opacity 0.25s ease",
         });
         // Apply saved or default position
         if (sidebarX !== null) {
@@ -475,9 +473,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             sidebar.style.right = "20px";
             sidebar.style.top   = sidebarY + "px";
         }
-
-        sidebar.onmouseenter = () => sidebar.style.opacity = "1";
-        sidebar.onmouseleave = () => sidebar.style.opacity = "0.25";
 
         // Toggle button — doubles as drag handle
         const toggle = document.createElement("div");
