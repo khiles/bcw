@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BC Reaction Wheel - Fully Featured
 // @namespace    http://khile.dev/
-// @version      1.5.0
+// @version      1.6.0
 // @description  Beautiful radial emote wheel with full editor, packs & more
 // @author       Khile
 // @match        https://www.bondageprojects.com/club_game/*
@@ -22,7 +22,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     const modApi = bcModSdk.registerMod({
         name: "ReactionWheel",
         fullName: "Khile's Reaction Wheel",
-        version: "1.5.0",
+        version: "1.6.0",
         repository: "https://github.com/yourname/bc-reaction-wheel"
     });
 
@@ -48,15 +48,65 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     let currentPack = "Default";
     let packs = {
         "Default": [
-            {id:1, name:"Beg",        icon:"🙏", chat:"*begs desperately on my knees*",    expr:"Sad",            pose:"Kneel", arousal:8,  duration:6, color:"#ff69b4"},
-            {id:2, name:"Squirm",     icon:"😣", chat:"*squirms helplessly in my bonds*",  expr:"Blush",          pose:"",      arousal:12, duration:5, color:"#ff4500"},
-            {id:3, name:"Blush Hard", icon:"😳", chat:"*blushes furiously*",               expr:"VeryEmbarrassed",pose:"",      arousal:5,  duration:4, color:"#ff1493"},
-            {id:4, name:"Whimper",    icon:"🥺", chat:"*whimpers softly*",                 expr:"Sad",            pose:"",      arousal:3,  duration:4, color:"#00bfff"},
-            {id:5, name:"Tease",      icon:"😏", chat:"*teases you playfully*",            expr:"Smirk",          pose:"",      arousal:7,  duration:5, color:"#ffd700"},
-            {id:6, name:"Kneel",      icon:"🧎", chat:"*drops to my knees submissively*",  expr:"",               pose:"Kneel", arousal:4,  duration:8, color:"#32cd32"},
-            {id:7, name:"Moan",       icon:"😩", chat:"*moans loudly*",                    expr:"Horny",          pose:"",      arousal:15, duration:4, color:"#ff0000"},
-            {id:8, name:"Struggle",   icon:"💢", chat:"*struggles against the ropes*",     expr:"Angry",          pose:"",      arousal:6,  duration:5, color:"#ff8c00"},
-        ]
+            {id:1, name:"Beg",        icon:"🙏", chat:"*begs desperately on my knees*",    expr:"Sad",            pose:"Kneel", arousal:8,  duration:6, color:"#ff69b4", tags:"submissive,arousal"},
+            {id:2, name:"Squirm",     icon:"😣", chat:"*squirms helplessly in my bonds*",  expr:"Blush",          pose:"",      arousal:12, duration:5, color:"#ff4500", tags:"submissive,arousal"},
+            {id:3, name:"Blush Hard", icon:"😳", chat:"*blushes furiously*",               expr:"VeryEmbarrassed",pose:"",      arousal:5,  duration:4, color:"#ff1493", tags:"submissive,soft"},
+            {id:4, name:"Whimper",    icon:"🥺", chat:"*whimpers softly*",                 expr:"Sad",            pose:"",      arousal:3,  duration:4, color:"#00bfff", tags:"submissive,soft"},
+            {id:5, name:"Tease",      icon:"😏", chat:"*teases you playfully*",            expr:"Smirk",          pose:"",      arousal:7,  duration:5, color:"#ffd700", tags:"playful,flirt"},
+            {id:6, name:"Kneel",      icon:"🧎", chat:"*drops to my knees submissively*",  expr:"",               pose:"Kneel", arousal:4,  duration:8, color:"#32cd32", tags:"submissive,soft"},
+            {id:7, name:"Moan",       icon:"😩", chat:"*moans loudly*",                    expr:"Horny",          pose:"",      arousal:15, duration:4, color:"#ff0000", tags:"submissive,arousal"},
+            {id:8, name:"Struggle",   icon:"💢", chat:"*struggles against the ropes*",     expr:"Angry",          pose:"",      arousal:6,  duration:5, color:"#ff8c00", tags:"restrained,fight"},
+        ],
+        "Submissive": [
+            {id:2001, name:"Beg",     icon:"🙏", chat:"*begs desperately, eyes wide and pleading*",       expr:"Sad",            pose:"Kneel", arousal:8,  duration:6, color:"#ff69b4", tags:"submissive,arousal"},
+            {id:2002, name:"Yield",   icon:"🏳️", chat:"*goes still and yields completely*",                expr:"Sad",            pose:"",      arousal:4,  duration:5, color:"#cc66ff", tags:"submissive,soft"},
+            {id:2003, name:"Kneel",   icon:"🧎", chat:"*slowly drops to both knees*",                      expr:"",               pose:"Kneel", arousal:3,  duration:7, color:"#9966cc", tags:"submissive,soft"},
+            {id:2004, name:"Whimper", icon:"🥺", chat:"*whimpers softly and trembles*",                    expr:"Sad",            pose:"",      arousal:5,  duration:4, color:"#6699ff", tags:"submissive,soft"},
+            {id:2005, name:"Blush",   icon:"😳", chat:"*flushes scarlet, unable to meet your eyes*",       expr:"VeryEmbarrassed",pose:"",      arousal:6,  duration:4, color:"#ff6699", tags:"submissive,soft"},
+            {id:2006, name:"Squirm",  icon:"😣", chat:"*squirms helplessly, cheeks burning*",              expr:"Blush",          pose:"",      arousal:10, duration:5, color:"#ff4500", tags:"submissive,arousal"},
+            {id:2007, name:"Moan",    icon:"😩", chat:"*lets out a helpless moan*",                        expr:"Horny",          pose:"",      arousal:12, duration:4, color:"#ff0055", tags:"submissive,arousal"},
+            {id:2008, name:"Obey",    icon:"🫡", chat:"*nods quickly and obeys without question*",         expr:"",               pose:"",      arousal:2,  duration:4, color:"#33cc99", tags:"submissive,soft"},
+        ],
+        "Dominant": [
+            {id:3001, name:"Command", icon:"👆", chat:"*fixes you with a commanding stare*",               expr:"Angry",          pose:"",      arousal:3,  duration:5, color:"#cc3300", tags:"dominant,power"},
+            {id:3002, name:"Smirk",   icon:"😏", chat:"*smirks slowly, eyes gleaming with amusement*",    expr:"Smirk",          pose:"",      arousal:4,  duration:5, color:"#ff8800", tags:"dominant,power"},
+            {id:3003, name:"Grab",    icon:"🤜", chat:"*reaches out and grabs your chin firmly*",          expr:"Angry",          pose:"",      arousal:6,  duration:5, color:"#cc0000", tags:"dominant,power"},
+            {id:3004, name:"Praise",  icon:"✨", chat:"*strokes your hair approvingly*",                   expr:"Smirk",          pose:"",      arousal:3,  duration:5, color:"#ffcc00", tags:"dominant,soft"},
+            {id:3005, name:"Punish",  icon:"🚨", chat:"*narrows eyes dangerously*",                        expr:"Angry",          pose:"",      arousal:5,  duration:5, color:"#990000", tags:"dominant,power"},
+            {id:3006, name:"Tease",   icon:"😈", chat:"*leans in close and whispers something wicked*",   expr:"Smirk",          pose:"",      arousal:7,  duration:5, color:"#ff3399", tags:"dominant,arousal"},
+            {id:3007, name:"Dismiss", icon:"🙄", chat:"*waves a hand dismissively*",                       expr:"Smirk",          pose:"",      arousal:2,  duration:4, color:"#555577", tags:"dominant,power"},
+            {id:3008, name:"Own",     icon:"🔐", chat:"*looks at you with quiet, absolute possession*",   expr:"Smirk",          pose:"",      arousal:8,  duration:6, color:"#6600cc", tags:"dominant,power"},
+        ],
+        "Restrained": [
+            {id:4001, name:"Struggle", icon:"💢", chat:"*strains against the bonds desperately*",          expr:"Angry",          pose:"",      arousal:7,  duration:5, color:"#ff4400", tags:"restrained,fight"},
+            {id:4002, name:"Whimper",  icon:"🥺", chat:"*whimpers helplessly against the restraints*",     expr:"Sad",            pose:"",      arousal:5,  duration:4, color:"#6699ff", tags:"restrained,soft"},
+            {id:4003, name:"Go Limp",  icon:"😶", chat:"*stops fighting and goes completely limp*",        expr:"Sad",            pose:"",      arousal:3,  duration:5, color:"#888888", tags:"restrained,soft"},
+            {id:4004, name:"Sob",      icon:"😢", chat:"*lets out a muffled sob*",                         expr:"Sad",            pose:"",      arousal:4,  duration:4, color:"#3399ff", tags:"restrained,soft"},
+            {id:4005, name:"Shiver",   icon:"🫨", chat:"*trembles uncontrollably*",                        expr:"VeryEmbarrassed",pose:"",      arousal:7,  duration:4, color:"#99ccff", tags:"restrained,soft"},
+            {id:4006, name:"Strain",   icon:"😤", chat:"*strains every muscle trying to pull free*",       expr:"Angry",          pose:"",      arousal:9,  duration:5, color:"#cc2200", tags:"restrained,fight"},
+            {id:4007, name:"Moan",     icon:"😩", chat:"*moans helplessly*",                               expr:"Horny",          pose:"",      arousal:12, duration:4, color:"#ff0055", tags:"restrained,arousal"},
+            {id:4008, name:"Beg Free", icon:"🙏", chat:"*begs with desperate eyes to be released*",        expr:"Sad",            pose:"",      arousal:8,  duration:6, color:"#ff69b4", tags:"restrained,fight"},
+        ],
+        "Playful": [
+            {id:5001, name:"Tease",   icon:"😜", chat:"*sticks out tongue playfully*",                     expr:"Smirk",          pose:"",      arousal:4,  duration:4, color:"#ffcc00", tags:"playful,light"},
+            {id:5002, name:"Giggle",  icon:"🤭", chat:"*giggles and tries not to smile*",                  expr:"Blush",          pose:"",      arousal:3,  duration:3, color:"#ffaa88", tags:"playful,light"},
+            {id:5003, name:"Pout",    icon:"🥹", chat:"*pouts adorably*",                                  expr:"Sad",            pose:"",      arousal:2,  duration:3, color:"#ff88aa", tags:"playful,soft"},
+            {id:5004, name:"Wink",    icon:"😉", chat:"*winks suggestively*",                              expr:"Smirk",          pose:"",      arousal:5,  duration:3, color:"#88aaff", tags:"playful,flirt"},
+            {id:5005, name:"Bounce",  icon:"🐇", chat:"*bounces on heels with barely-contained energy*",  expr:"",               pose:"",      arousal:3,  duration:3, color:"#aaffaa", tags:"playful,light"},
+            {id:5006, name:"Blush",   icon:"😊", chat:"*goes pink and looks away quickly*",                expr:"Blush",          pose:"",      arousal:3,  duration:3, color:"#ffaacc", tags:"playful,soft"},
+            {id:5007, name:"Nudge",   icon:"👉", chat:"*nudges you with an elbow*",                        expr:"Smirk",          pose:"",      arousal:2,  duration:3, color:"#aaaaff", tags:"playful,light"},
+            {id:5008, name:"Flirt",   icon:"💋", chat:"*twirls hair and bats eyes shamelessly*",          expr:"Smirk",          pose:"",      arousal:6,  duration:4, color:"#ff66aa", tags:"playful,flirt"},
+        ],
+        "Aftercare": [
+            {id:6001, name:"Nuzzle",  icon:"🐱", chat:"*nuzzles close and sighs contentedly*",            expr:"Blush",          pose:"",      arousal:2,  duration:5, color:"#ffaacc", tags:"aftercare,soft"},
+            {id:6002, name:"Curl Up", icon:"🌙", chat:"*curls up small and close*",                        expr:"Sad",            pose:"",      arousal:1,  duration:6, color:"#6699cc", tags:"aftercare,soft"},
+            {id:6003, name:"Purr",    icon:"😺", chat:"*makes a small, happy sound*",                      expr:"Blush",          pose:"",      arousal:2,  duration:4, color:"#ffcc99", tags:"aftercare,soft"},
+            {id:6004, name:"Hold",    icon:"🤗", chat:"*holds on tight and doesn't let go*",               expr:"Sad",            pose:"",      arousal:1,  duration:5, color:"#cc99ff", tags:"aftercare,soft"},
+            {id:6005, name:"Sigh",    icon:"😮‍💨", chat:"*lets out a long, peaceful sigh*",           expr:"Blush",          pose:"",      arousal:1,  duration:4, color:"#99cccc", tags:"aftercare,soft"},
+            {id:6006, name:"Thank",   icon:"🙏", chat:"*looks up gratefully, eyes soft*",                  expr:"Sad",            pose:"",      arousal:1,  duration:4, color:"#99cc99", tags:"aftercare,soft"},
+            {id:6007, name:"Safe",    icon:"💙", chat:"*feels completely safe and at peace*",              expr:"Blush",          pose:"",      arousal:0,  duration:5, color:"#3399ff", tags:"aftercare,soft"},
+            {id:6008, name:"Rest",    icon:"😴", chat:"*rests heavily, finally letting everything go*",    expr:"Sad",            pose:"",      arousal:0,  duration:6, color:"#555577", tags:"aftercare,soft"},
+        ],
     };
 
     let emoteLastUsed  = {};      // emote.id → timestamp of last use
@@ -78,6 +128,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     let triggerKey = "Control";
     let minimalMode = false;         // hide sidebar until wheel opens
     let chains = {};                 // {chainName: [{emoteName, delay}]}
+    let restraintPackName = "";      // auto-switch to this pack when restrained ("" = disabled)
+    let domPackName = "";            // auto-switch when target is tagged Dom ("" = disabled)
+    let subPackName = "";            // auto-switch when target is tagged Sub ("" = disabled)
+    let arousalThresholds = [];      // [{threshold, emoteName, chainName, triggered}]
+    let knownPlayers = {};           // {playerName: {role, pronouns}} — persisted pronoun memory
+    let activeTag = null;            // currently filtered tag on the wheel (null = show all)
+    let _rolePackPrev = null;        // pack name before a role-based auto-switch
+    let _restraintPackPrev = null;   // pack name before a restraint-based auto-switch
 
     const STORAGE_KEY = "bcReactionWheelData";
 
@@ -100,8 +158,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 hudY             = data.hudY         != null ? data.hudY         : null;
                 emoteHistory     = data.emoteHistory || [];
                 pinnedEmotes     = data.pinnedEmotes || [null, null, null, null];
-                minimalMode      = data.minimalMode  ?? false;
-                chains           = data.chains       || {};
+                minimalMode        = data.minimalMode        ?? false;
+                chains             = data.chains             || {};
+                restraintPackName  = data.restraintPackName  || "";
+                domPackName        = data.domPackName        || "";
+                subPackName        = data.subPackName        || "";
+                arousalThresholds  = data.arousalThresholds  || [];
+                knownPlayers       = data.knownPlayers       || {};
             }
         } catch(err) { console.error("[ReactionWheel] Load error:", err); }
     }
@@ -112,9 +175,41 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             sidebarCollapsed, sidebarX, sidebarY,
             hudX, hudY, emoteHistory, pinnedEmotes,
             minimalMode, chains,
+            restraintPackName, domPackName, subPackName,
+            arousalThresholds, knownPlayers,
         }));
     }
+
+    // Install premade packs only on first load (never overwrites user edits)
+    function installPremadePacks() {
+        const premade = ["Submissive","Dominant","Restrained","Playful","Aftercare"];
+        let added = false;
+        premade.forEach(name => {
+            if (!packs[name]) { packs[name] = []; added = true; }
+        });
+        if (added) saveData();
+    }
     loadData();
+
+    // ====================== TAG FILTERING ======================
+    // Returns the emotes for the current pack, filtered by activeTag if one is set.
+    function getActiveEmotes() {
+        const all = packs[currentPack] || [];
+        if (!activeTag) return all;
+        return all.filter(e => {
+            const tags = (e.tags || "").split(",").map(t => t.trim()).filter(Boolean);
+            return tags.includes(activeTag);
+        });
+    }
+
+    // Collect all unique tags across the current pack
+    function getPackTags() {
+        const set = new Set();
+        (packs[currentPack] || []).forEach(e => {
+            (e.tags || "").split(",").map(t => t.trim()).filter(Boolean).forEach(t => set.add(t));
+        });
+        return [...set].sort();
+    }
 
     // ====================== WHEEL UI (Canvas) ======================
     let canvas, ctx;
@@ -162,7 +257,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!canvas || !ctx) return;
         const half = W / 2;
         ctx.clearRect(0, 0, W, W);
-        const emotes = packs[currentPack] || [];
+        const emotes = getActiveEmotes();
         if (!emotes.length) return;
         const n = emotes.length;
         const slice = (Math.PI * 2) / n;
@@ -254,14 +349,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         } else {
             let angle = Math.atan2(dy, dx) + Math.PI / 2;
             if (angle < 0) angle += Math.PI * 2;
-            const emotes = packs[currentPack] || [];
+            const emotes = getActiveEmotes();
             selected = Math.floor(angle / (Math.PI * 2 / emotes.length)) % emotes.length;
         }
         drawWheel();
     }
 
     function onMouseUp() {
-        const emotes = packs[currentPack] || [];
+        const emotes = getActiveEmotes();
         const emote  = emotes[selected];
         if (emote && !isOnCooldown(emote)) {
             emoteLastUsed[emote.id] = Date.now();
@@ -449,6 +544,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (emote.arousal && Player.ArousalSettings) {
             const current = Player.ArousalSettings.Progress || 0;
             Player.ArousalSettings.Progress = Math.min(100, current + emote.arousal);
+            checkArousalThresholds();
         }
 
         showHUD(emote, duration * 1000);
@@ -488,6 +584,74 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             setTimeout(() => fireChain(chainName, _step + 1), 0);
         }
     }
+
+    // ====================== SMART PACK SWITCHING ======================
+
+    function switchPackTo(newPack, savePrev) {
+        if (!packs[newPack] || currentPack === newPack) return;
+        if (savePrev) savePrev(currentPack);
+        currentPack = newPack;
+        activeTag = null; updateTagButton();
+        saveData(); updatePackSwitcher();
+        if (wheelActive) drawWheel();
+    }
+
+    // Called whenever currentTarget.role changes; auto-switches packs if configured
+    function checkRolePackSwitch(newRole) {
+        const target = newRole === "dom" ? domPackName : newRole === "sub" ? subPackName : null;
+        if (target && packs[target]) {
+            // Only save prev if we weren't already on a role-switched pack
+            if (_rolePackPrev === null) _rolePackPrev = currentPack;
+            switchPackTo(target, null);
+        } else if (_rolePackPrev !== null) {
+            // Role cleared — revert
+            const prev = _rolePackPrev;
+            _rolePackPrev = null;
+            switchPackTo(prev, null);
+        }
+    }
+
+    // Restraint detection — polled every 4 s
+    function checkRestraint() {
+        if (!restraintPackName || !packs[restraintPackName]) return;
+        const isRestrained = typeof Player?.IsRestrained === "function"
+            ? Player.IsRestrained()
+            : typeof InventoryGet === "function" && (
+                InventoryGet(Player, "ItemArms") || InventoryGet(Player, "ItemLegs"));
+        if (isRestrained && currentPack !== restraintPackName) {
+            _restraintPackPrev = currentPack;
+            switchPackTo(restraintPackName, null);
+        } else if (!isRestrained && _restraintPackPrev !== null) {
+            const prev = _restraintPackPrev;
+            _restraintPackPrev = null;
+            switchPackTo(prev, null);
+        }
+    }
+
+    // ====================== AROUSAL THRESHOLDS ======================
+
+    // Check after every arousal change and on a polling interval
+    function checkArousalThresholds() {
+        if (!arousalThresholds.length || !Player.ArousalSettings) return;
+        const current = Player.ArousalSettings.Progress || 0;
+        arousalThresholds.forEach(t => {
+            if (!t.triggered && current >= t.threshold) {
+                t.triggered = true;
+                if (t.chainName && chains[t.chainName]) {
+                    fireChain(t.chainName);
+                } else if (t.emoteName) {
+                    const emote = findEmoteByName(t.emoteName);
+                    if (emote) { emoteLastUsed[emote.id] = Date.now(); performEmote(emote); }
+                }
+            } else if (t.triggered && current < t.threshold - 10) {
+                // Hysteresis: reset once arousal drops 10 below threshold
+                t.triggered = false;
+            }
+        });
+    }
+
+    setInterval(checkRestraint, 4000);
+    setInterval(checkArousalThresholds, 5000);
 
     // ====================== SETTINGS MODAL ======================
     // ====================== COLLAPSIBLE SIDEBAR ======================
@@ -781,6 +945,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 ${mkDataInput("rw-f-pose",          "Pose",             BC_POSES,                    "Kneel")}
                 ${mkDataInput("rw-f-followup",      "Follow-up emote",  emoteNames,                  "(none)")}
                 ${mkInput(    "rw-f-followup-delay","Follow-up delay(s)","number",                   "0")}
+                ${mkInput(    "rw-f-tags",          "Tags (comma-sep)", "text",                      "submissive, soft")}
             </div>
             <div>
                 <label style="display:block;font-size:12px;color:#aaa;margin-bottom:3px;">Chat / emote text <span style="color:#666;font-size:11px;">[Name] [They] [Them] [Their]</span></label>
@@ -837,6 +1002,67 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 <input id="rw-idle-minutes" type="number" min="1" max="120" value="${idleMinutes || 5}"
                     style="width:56px;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 7px;font-size:13px;">
                 <span style="color:#aaa;font-size:12px;white-space:nowrap;">min idle</span>
+            </div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:6px;color:#aaa;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Smart Pack Switching</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div>
+                    <label style="display:block;font-size:12px;color:#aaa;margin-bottom:3px;">When Restrained</label>
+                    <select id="rw-restraint-pack"
+                        style="width:100%;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 8px;font-size:13px;">
+                        <option value="">Disabled</option>
+                        ${packNames.map(p=>`<option value="${p}" ${restraintPackName===p?"selected":""}>${p}</option>`).join("")}
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block;font-size:12px;color:#aaa;margin-bottom:3px;">When target is 👑 Dom</label>
+                    <select id="rw-dom-pack"
+                        style="width:100%;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 8px;font-size:13px;">
+                        <option value="">Disabled</option>
+                        ${packNames.map(p=>`<option value="${p}" ${domPackName===p?"selected":""}>${p}</option>`).join("")}
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block;font-size:12px;color:#aaa;margin-bottom:3px;">When target is 🔗 Sub</label>
+                    <select id="rw-sub-pack"
+                        style="width:100%;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 8px;font-size:13px;">
+                        <option value="">Disabled</option>
+                        ${packNames.map(p=>`<option value="${p}" ${subPackName===p?"selected":""}>${p}</option>`).join("")}
+                    </select>
+                </div>
+            </div>
+            <div style="margin-top:5px;font-size:11px;color:#555;">Pack auto-reverts when condition clears. Restraint checked every 4 s.</div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:6px;color:#aaa;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Arousal Thresholds</label>
+            <div id="rw-threshold-list" style="margin-bottom:8px;"></div>
+            <div style="display:grid;grid-template-columns:60px 1fr 1fr auto;gap:6px;align-items:end;">
+                <div>
+                    <label style="display:block;font-size:11px;color:#aaa;margin-bottom:2px;">At %</label>
+                    <input id="rw-thresh-value" type="number" min="1" max="100" value="75"
+                        style="width:100%;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 6px;font-size:13px;">
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;color:#aaa;margin-bottom:2px;">Fire emote</label>
+                    <input id="rw-thresh-emote" list="rw-thresh-emote-list" autocomplete="off" placeholder="(optional)"
+                        style="width:100%;box-sizing:border-box;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 7px;font-size:13px;">
+                    <datalist id="rw-thresh-emote-list">
+                        ${Object.values(packs).flat().map(e=>`<option value="${e.name}">`).join("")}
+                    </datalist>
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;color:#aaa;margin-bottom:2px;">…or chain</label>
+                    <input id="rw-thresh-chain" list="rw-thresh-chain-list" autocomplete="off" placeholder="(optional)"
+                        style="width:100%;box-sizing:border-box;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 7px;font-size:13px;">
+                    <datalist id="rw-thresh-chain-list">
+                        ${Object.keys(chains).map(cn=>`<option value="${cn}">`).join("")}
+                    </datalist>
+                </div>
+                <button id="rw-add-threshold"
+                    style="background:#ff69b4;color:#000;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:bold;white-space:nowrap;">+ Add</button>
             </div>
         </div>
 
@@ -918,6 +1144,31 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         document.body.appendChild(overlay);
         overlay.addEventListener("click", e => { if (e.target === overlay) closeSettingsModal(); });
         wireSettingsEvents(modal);
+    }
+
+    // ---- Arousal threshold list helper ----
+    function renderThresholdList(modal) {
+        const list = modal.querySelector("#rw-threshold-list");
+        if (!list) return;
+        list.innerHTML = "";
+        if (!arousalThresholds.length) {
+            list.innerHTML = `<div style="color:#555;font-size:12px;padding:4px 0;">No thresholds — add one below</div>`;
+            return;
+        }
+        arousalThresholds.forEach((t, i) => {
+            const row = document.createElement("div");
+            Object.assign(row.style, {display:"flex",alignItems:"center",gap:"8px",padding:"4px 0",borderBottom:"1px solid #1e1e2e"});
+            const lbl = document.createElement("span");
+            lbl.style.cssText = "flex:1;color:#eee;font-size:13px;";
+            const fire = t.chainName ? `chain: ${t.chainName}` : t.emoteName;
+            lbl.textContent = `⚡ At ${t.threshold}% → ${fire}`;
+            const delBtn = document.createElement("button");
+            delBtn.textContent = "✕";
+            Object.assign(delBtn.style, {background:"#6b0000",color:"#eee",border:"none",borderRadius:"4px",padding:"2px 6px",cursor:"pointer"});
+            delBtn.onclick = () => { arousalThresholds.splice(i, 1); saveData(); renderThresholdList(modal); };
+            row.append(lbl, delBtn);
+            list.appendChild(row);
+        });
     }
 
     // ---- Chain list + editor helpers ----
@@ -1147,6 +1398,22 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             idleMinutes = Math.max(0, parseFloat(e.target.value) || 0); saveData();
         };
 
+        modal.querySelector("#rw-restraint-pack").onchange = e => { restraintPackName = e.target.value; saveData(); };
+        modal.querySelector("#rw-dom-pack").onchange       = e => { domPackName        = e.target.value; saveData(); };
+        modal.querySelector("#rw-sub-pack").onchange       = e => { subPackName        = e.target.value; saveData(); };
+
+        renderThresholdList(modal);
+        modal.querySelector("#rw-add-threshold").onclick = () => {
+            const val   = parseInt(modal.querySelector("#rw-thresh-value").value) || 75;
+            const emote = modal.querySelector("#rw-thresh-emote").value.trim();
+            const chain = modal.querySelector("#rw-thresh-chain").value.trim();
+            if (!emote && !chain) { alert("Set an emote or chain to fire."); return; }
+            arousalThresholds.push({threshold: val, emoteName: emote, chainName: chain, triggered: false});
+            saveData(); renderThresholdList(modal);
+            modal.querySelector("#rw-thresh-emote").value = "";
+            modal.querySelector("#rw-thresh-chain").value = "";
+        };
+
         modal.querySelector("#rw-minimal-mode").onchange = e => {
             minimalMode = e.target.checked; saveData(); applyMinimalMode();
         };
@@ -1219,6 +1486,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         modal.querySelector("#rw-f-followup-delay").value = e?.followUpDelay ?? 0;
         modal.querySelector("#rw-f-chat-dom").value  = e?.chatDom  ?? "";
         modal.querySelector("#rw-f-chat-sub").value  = e?.chatSub  ?? "";
+        modal.querySelector("#rw-f-tags").value       = e?.tags     ?? "";
         form.scrollIntoView({behavior:"smooth"});
     }
 
@@ -1238,6 +1506,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             followUpDelay:  parseFloat(modal.querySelector("#rw-f-followup-delay").value) || 0,
             chatDom:        modal.querySelector("#rw-f-chat-dom").value.trim()            || "",
             chatSub:        modal.querySelector("#rw-f-chat-sub").value.trim()            || "",
+            tags:           modal.querySelector("#rw-f-tags").value.trim()                || "",
         };
         if (!emote.name) { alert("Emote name is required."); return; }
         if (idx >= 0) { packs[currentPack][idx] = emote; } else { packs[currentPack].push(emote); }
@@ -1255,6 +1524,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         const names = Object.keys(packs);
         const idx = names.indexOf(currentPack);
         currentPack = names[(idx + dir + names.length) % names.length];
+        activeTag = null; updateTagButton();
         saveData();
         updatePackSwitcher();
         if (wheelActive) drawWheel();
@@ -1401,6 +1671,98 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     function refreshHistoryPanel() {
         const panel = document.getElementById("rw-history-panel");
         if (panel) buildHistoryContent(panel);
+    }
+
+    // ====================== TAG FILTER BUTTON ======================
+
+    function createTagFilterButton() {
+        const btn = document.createElement("div");
+        btn.id = "rw-tag-btn";
+        Object.assign(btn.style, {
+            fontSize: "13px", cursor: "pointer",
+            background: "rgba(20,20,30,0.85)", color: "#ff69b4",
+            padding: "7px 10px", borderRadius: "8px",
+            border: "1.5px solid #ff69b4", lineHeight: "1.4",
+            userSelect: "none", textAlign: "center",
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        });
+        btn.onclick = openTagPicker;
+        sidebarAppend(btn);
+        updateTagButton();
+    }
+
+    function updateTagButton() {
+        const btn = document.getElementById("rw-tag-btn");
+        if (!btn) return;
+        if (activeTag) {
+            btn.textContent       = `🏷 ${activeTag}`;
+            btn.title             = `Filtering wheel: ${activeTag}. Click to change or clear.`;
+            btn.style.color       = "#aaffaa";
+            btn.style.borderColor = "#aaffaa";
+        } else {
+            btn.textContent       = "🏷";
+            btn.title             = "Filter wheel by tag (click to pick a tag)";
+            btn.style.color       = "#ff69b4";
+            btn.style.borderColor = "#ff69b4";
+        }
+    }
+
+    function openTagPicker() {
+        document.getElementById("rw-tag-picker")?.remove();
+        const tags = getPackTags();
+
+        const btn  = document.getElementById("rw-tag-btn");
+        const rect = btn ? btn.getBoundingClientRect() : {left: window.innerWidth - 160, top: 300};
+        const menu = document.createElement("div");
+        menu.id = "rw-tag-picker";
+        Object.assign(menu.style, {
+            position: "fixed",
+            ...popupPos(rect),
+            background: "#1a1a2e", border: "1.5px solid #ff69b4",
+            borderRadius: "8px", zIndex: "100001",
+            fontFamily: "Arial,sans-serif", fontSize: "13px",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.6)",
+            overflow: "hidden", minWidth: "130px",
+        });
+
+        const makeItem = (label, tag, color) => {
+            const el = document.createElement("div");
+            el.textContent = label;
+            const isActive = activeTag === tag;
+            Object.assign(el.style, {
+                padding: "8px 14px", cursor: "pointer",
+                color: isActive ? "#000" : (color || "#eee"),
+                background: isActive ? "#aaffaa" : "",
+                borderBottom: "1px solid #2a2a3a",
+            });
+            el.onmouseenter = () => { if (!isActive) el.style.background = "#2a2a3a"; };
+            el.onmouseleave = () => { el.style.background = isActive ? "#aaffaa" : ""; };
+            el.onclick = () => {
+                activeTag = isActive ? null : tag;
+                updateTagButton();
+                if (wheelActive) { selected = -1; drawWheel(); }
+                menu.remove();
+            };
+            return el;
+        };
+
+        menu.appendChild(makeItem("✕  No filter (show all)", null, "#aaa"));
+        if (!tags.length) {
+            const el = document.createElement("div");
+            el.textContent = "(no tags in this pack)";
+            el.style.cssText = "padding:8px 14px;color:#555;";
+            menu.appendChild(el);
+        } else {
+            tags.forEach(t => menu.appendChild(makeItem(`🏷 ${t}`, t)));
+        }
+
+        document.body.appendChild(menu);
+        setTimeout(() => {
+            const close = e => {
+                if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener("click", close); }
+            };
+            document.addEventListener("click", close);
+        }, 0);
     }
 
     // ====================== IDLE AUTO-EMOTE ======================
@@ -1552,8 +1914,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 namePart.onmouseenter = () => namePart.style.background = "#2a2a3a";
                 namePart.onmouseleave = () => namePart.style.background = "";
                 namePart.onclick = () => {
-                    const prev = currentTarget?.name === c.Name ? currentTarget : null;
-                    currentTarget = {name: c.Name, role: prev?.role || null, pronouns: prev?.pronouns || null};
+                    // Merge: live target > knownPlayers memory > blank
+                    const prev    = currentTarget?.name === c.Name ? currentTarget : null;
+                    const memory  = knownPlayers[c.Name] || {};
+                    currentTarget = {
+                        name:     c.Name,
+                        role:     prev?.role     ?? memory.role     ?? null,
+                        pronouns: prev?.pronouns ?? memory.pronouns ?? null,
+                    };
                     updateTargetButton(); menu.remove();
                 };
 
@@ -1562,7 +1930,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     const btn = document.createElement("button");
                     btn.textContent = label;
                     btn.title = title;
-                    const isActive = currentTarget?.name === c.Name && currentTarget?.role === role;
+                    const effectiveRole = currentTarget?.name === c.Name
+                        ? currentTarget.role : (knownPlayers[c.Name]?.role ?? null);
+                    const isActive = effectiveRole === role;
                     Object.assign(btn.style, {
                         background: isActive ? "#ff69b4" : "#1a1a2e",
                         color: isActive ? "#000" : "#aaa",
@@ -1572,16 +1942,21 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     });
                     btn.onclick = e => {
                         e.stopPropagation();
-                        const prev = currentTarget?.name === c.Name ? currentTarget : {name: c.Name};
+                        const prev    = currentTarget?.name === c.Name ? currentTarget : {name: c.Name};
+                        const memory  = knownPlayers[c.Name] || {};
                         const newRole = prev.role === role ? null : role;
                         currentTarget = {
-                            name: c.Name,
-                            role: newRole,
-                            pronouns: prev.pronouns || null,
+                            name:     c.Name,
+                            role:     newRole,
+                            pronouns: prev.pronouns ?? memory.pronouns ?? null,
                         };
+                        // Persist role to known players
+                        knownPlayers[c.Name] = Object.assign(memory, {role: newRole});
+                        saveData();
+                        checkRolePackSwitch(newRole);
                         updateTargetButton();
                         menu.remove();
-                        openTargetPicker(); // reopen to show updated state
+                        openTargetPicker();
                     };
                     return btn;
                 };
@@ -1590,8 +1965,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     const btn = document.createElement("button");
                     btn.textContent = label;
                     btn.title = title;
-                    const p = currentTarget?.name === c.Name ? currentTarget?.pronouns : null;
-                    const isActive = p && p.they === pronouns.they;
+                    const effectiveP = currentTarget?.name === c.Name
+                        ? (currentTarget.pronouns ?? knownPlayers[c.Name]?.pronouns ?? null)
+                        : (knownPlayers[c.Name]?.pronouns ?? null);
+                    const isActive = effectiveP && effectiveP.they === pronouns.they;
                     Object.assign(btn.style, {
                         background: isActive ? "#00bfff" : "#1a1a2e",
                         color: isActive ? "#000" : "#aaa",
@@ -1601,12 +1978,17 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     });
                     btn.onclick = e => {
                         e.stopPropagation();
-                        const prev = currentTarget?.name === c.Name ? currentTarget : {name: c.Name};
+                        const prev   = currentTarget?.name === c.Name ? currentTarget : {name: c.Name};
+                        const memory = knownPlayers[c.Name] || {};
+                        const newPronouns = isActive ? null : pronouns;
                         currentTarget = {
-                            name: c.Name,
-                            role: prev.role || null,
-                            pronouns: isActive ? null : pronouns,
+                            name:     c.Name,
+                            role:     prev.role ?? memory.role ?? null,
+                            pronouns: newPronouns,
                         };
+                        // Persist pronouns to known players
+                        knownPlayers[c.Name] = Object.assign(memory, {pronouns: newPronouns});
+                        saveData();
                         updateTargetButton();
                         menu.remove();
                         openTargetPicker();
@@ -1910,18 +2292,20 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     // ====================== START ======================
     setTimeout(() => {
+        installPremadePacks();
         createSidebar();          // container must exist before children
         createSettingsButton();
         createPackSwitcher();
         createSuppressButton();
         createTargetButton();
+        createTagFilterButton();
         createHistoryButton();
         initRightClickReact();
         checkURLImport();
         hookItalicChat();
         applyMinimalMode();
         console.log(
-            "%c✅ BC Reaction Wheel v1.5.0 loaded! Ctrl=wheel · 1-8=hotkeys · /=search · right-click chat to react.",
+            "%c✅ BC Reaction Wheel v1.6.0 loaded! Ctrl=wheel · 1-8=hotkeys · /=search · right-click chat to react.",
             "color:#ff69b4;font-weight:bold"
         );
     }, 2000);
