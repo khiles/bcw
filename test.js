@@ -139,6 +139,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     const STORAGE_KEY = "bcReactionWheelData";
 
+    // Snapshot premade pack definitions before loadData() can overwrite `packs`
+    const PREMADE_PACKS = JSON.parse(JSON.stringify(packs));
+
     function loadData() {
         try {
             const saved = localStorage.getItem(STORAGE_KEY);
@@ -182,10 +185,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     // Install premade packs only on first load (never overwrites user edits)
     function installPremadePacks() {
-        const premade = ["Submissive","Dominant","Restrained","Playful","Aftercare"];
         let added = false;
-        premade.forEach(name => {
-            if (!packs[name]) { packs[name] = []; added = true; }
+        Object.entries(PREMADE_PACKS).forEach(([name, emotes]) => {
+            if (name === "Default") return; // never re-stamp Default
+            if (!packs[name]) { packs[name] = emotes; added = true; }
         });
         if (added) saveData();
     }
