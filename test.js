@@ -1368,7 +1368,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 style="background:#1a1a2e;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px;">Import JSON</button>
             <button id="rw-export"
                 style="background:#1a1a2e;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:13px;">Export JSON</button>
+
+                <label style="display:flex;align-items:center;gap:8px;margin-top:6px;cursor:pointer;font-size:12px;color:#aaa;">
+                             Created by Lucifers Sidechick 
+            </label>
         </div>
+        
         `;
     }
 
