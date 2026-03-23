@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BC Reaction Wheel - Fully Featured
 // @namespace    http://khile.dev/
-// @version      1.4.0
+// @version      1.5.0
 // @description  Beautiful radial emote wheel with full editor, packs & more
 // @author       Khile
 // @match        https://www.bondageprojects.com/club_game/*
@@ -22,7 +22,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     const modApi = bcModSdk.registerMod({
         name: "ReactionWheel",
         fullName: "Khile's Reaction Wheel",
-        version: "1.4.0",
+        version: "1.5.0",
         repository: "https://github.com/yourname/bc-reaction-wheel"
     });
 
@@ -76,6 +76,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     let selected = -1;
     let triggerMode = "hold"; // "hold" or "toggle"
     let triggerKey = "Control";
+    let minimalMode = false;         // hide sidebar until wheel opens
+    let chains = {};                 // {chainName: [{emoteName, delay}]}
 
     const STORAGE_KEY = "bcReactionWheelData";
 
@@ -98,6 +100,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 hudY             = data.hudY         != null ? data.hudY         : null;
                 emoteHistory     = data.emoteHistory || [];
                 pinnedEmotes     = data.pinnedEmotes || [null, null, null, null];
+                minimalMode      = data.minimalMode  ?? false;
+                chains           = data.chains       || {};
             }
         } catch(err) { console.error("[ReactionWheel] Load error:", err); }
     }
@@ -107,6 +111,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             suppressChat, idlePackName, idleMinutes,
             sidebarCollapsed, sidebarX, sidebarY,
             hudX, hudY, emoteHistory, pinnedEmotes,
+            minimalMode, chains,
         }));
     }
     loadData();
@@ -268,8 +273,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     // ====================== PERFORM EMOTE ======================
     function sendChat(text) {
         if (suppressChat) return;
-        // Substitute [Name] with the current target's name if one is set
-        if (currentTarget) text = text.replace(/\[Name\]/gi, currentTarget.name);
+        // Substitute [Name] and pronoun tokens with the current target's values
+        if (currentTarget) {
+            text = text.replace(/\[Name\]/gi, currentTarget.name);
+            const p = currentTarget.pronouns || {they:"they", them:"them", their:"their"};
+            text = text.replace(/\[They\]/gi,  p.they);
+            text = text.replace(/\[Them\]/gi,  p.them);
+            text = text.replace(/\[Their\]/gi, p.their);
+        }
         if (typeof ServerSend === "function" && typeof CurrentScreen !== "undefined" && CurrentScreen === "ChatRoom") {
             if (text.startsWith("*") && text.endsWith("*") && text.length > 2) {
                 ServerSend("ChatRoomChat", {Content: text.slice(1, -1), Type: "Emote"});
@@ -427,7 +438,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!emote || _depth > 5) return;
         const duration = emote.duration || 5;
 
-        if (emote.chat) sendChat(emote.chat);
+        // Pick contextual chat text based on target role
+        let chatText = emote.chat;
+        if (currentTarget?.role === "dom" && emote.chatDom) chatText = emote.chatDom;
+        else if (currentTarget?.role === "sub" && emote.chatSub) chatText = emote.chatSub;
+        if (chatText) sendChat(chatText);
         applyExpression(emote.expr, duration);
         applyPose(emote.pose, duration * 1000);
 
@@ -450,6 +465,27 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     performEmote(next, _depth + 1);
                 }, duration * 1000 + (emote.followUpDelay || 0) * 1000);
             }
+        }
+    }
+
+    // ====================== EMOTE CHAIN ======================
+    // A chain is a named sequence of {emoteName, delay} steps.
+    // Each step fires the emote, then waits (emote.duration + step.delay) seconds before the next.
+
+    function fireChain(chainName, _step = 0) {
+        const steps = chains[chainName];
+        if (!steps || _step >= steps.length) return;
+        const step  = steps[_step];
+        const emote = findEmoteByName(step.emoteName);
+        if (emote) {
+            emoteLastUsed[emote.id] = Date.now();
+            performEmote(emote);
+            if (_step + 1 < steps.length) {
+                const wait = (emote.duration || 5) * 1000 + (step.delay || 0) * 1000;
+                setTimeout(() => fireChain(chainName, _step + 1), wait);
+            }
+        } else if (_step + 1 < steps.length) {
+            setTimeout(() => fireChain(chainName, _step + 1), 0);
         }
     }
 
@@ -477,8 +513,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             sidebar.style.top   = sidebarY + "px";
         }
 
-        sidebar.onmouseenter = () => sidebar.style.opacity = "1";
-        sidebar.onmouseleave = () => sidebar.style.opacity = "0.25";
+        sidebar.onmouseenter = () => { if (!minimalMode) sidebar.style.opacity = "1"; };
+        sidebar.onmouseleave = () => { if (!minimalMode) sidebar.style.opacity = "0.25"; };
 
         // Toggle button — doubles as drag handle
         const toggle = document.createElement("div");
@@ -541,6 +577,42 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         sidebarCollapsed = !sidebarCollapsed;
         saveData();
         applySidebarState();
+    }
+
+    function applyMinimalMode() {
+        const sidebar = document.getElementById("rw-sidebar");
+        let dot = document.getElementById("rw-minimal-dot");
+
+        if (minimalMode) {
+            if (sidebar) {
+                sidebar.style.opacity = "0";
+                sidebar.style.pointerEvents = "none";
+            }
+            if (!dot) {
+                dot = document.createElement("div");
+                dot.id = "rw-minimal-dot";
+                Object.assign(dot.style, {
+                    position: "fixed", bottom: "12px", right: "12px",
+                    width: "8px", height: "8px", borderRadius: "50%",
+                    background: "#ff69b4", zIndex: "99998",
+                    cursor: "pointer", opacity: "0.5",
+                    transition: "opacity 0.2s ease",
+                    boxShadow: "0 0 6px rgba(255,105,180,0.8)",
+                });
+                dot.title = "Reaction Wheel — minimal mode active. Click to show sidebar.";
+                dot.onmouseenter = () => dot.style.opacity = "1";
+                dot.onmouseleave = () => dot.style.opacity = "0.5";
+                dot.onclick = () => { minimalMode = false; saveData(); applyMinimalMode(); };
+                dot.addEventListener("contextmenu", e => { e.preventDefault(); openSettingsModal(); });
+                document.body.appendChild(dot);
+            }
+        } else {
+            if (dot) dot.remove();
+            if (sidebar) {
+                sidebar.style.opacity = "0.25";
+                sidebar.style.pointerEvents = "";
+            }
+        }
     }
 
     function applySidebarState() {
@@ -609,15 +681,23 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         const idlePackOptions = packNames.map(p =>
             `<option value="${p}" ${idlePackName===p?"selected":""}>${p}</option>`
         ).join("");
-        // All emotes across all packs for the pin dropdowns
-        const allEmoteOptions = i => Object.entries(packs).flatMap(([pn, es]) =>
-            es.map(e => {
-                const val = `${pn}::${e.name}`;
-                const pin = pinnedEmotes[i];
-                const sel = pin && pin.packName === pn && pin.emoteName === e.name ? "selected" : "";
-                return `<option value="${val}" ${sel}>${pn}: ${e.icon||""} ${e.name}</option>`;
-            })
-        ).join("");
+        // All emotes + chains across all packs for the pin dropdowns
+        const allEmoteOptions = i => {
+            const pin = pinnedEmotes[i];
+            const emoteOpts = Object.entries(packs).flatMap(([pn, es]) =>
+                es.map(e => {
+                    const val = `${pn}::${e.name}`;
+                    const sel = pin && pin.packName === pn && pin.emoteName === e.name ? "selected" : "";
+                    return `<option value="${val}" ${sel}>${pn}: ${e.icon||""} ${e.name}</option>`;
+                })
+            );
+            const chainOpts = Object.keys(chains).map(cn => {
+                const val = `chain::${cn}`;
+                const sel = pin && pin.chainName === cn ? "selected" : "";
+                return `<option value="${val}" ${sel}>⛓ Chain: ${cn}</option>`;
+            });
+            return [...emoteOpts, ...chainOpts].join("");
+        };
 
         const packTabs = packNames.map(p =>
             `<button class="rw-pack-tab" data-pack="${p}"
@@ -703,10 +783,24 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 ${mkInput(    "rw-f-followup-delay","Follow-up delay(s)","number",                   "0")}
             </div>
             <div>
-                <label style="display:block;font-size:12px;color:#aaa;margin-bottom:3px;">Chat / emote text</label>
+                <label style="display:block;font-size:12px;color:#aaa;margin-bottom:3px;">Chat / emote text <span style="color:#666;font-size:11px;">[Name] [They] [Them] [Their]</span></label>
                 <textarea id="rw-f-chat" rows="2"
                     style="width:100%;box-sizing:border-box;background:#222;color:#eee;
                            border:1px solid #555;border-radius:6px;padding:6px;font-size:13px;resize:vertical;"></textarea>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+                <div>
+                    <label style="display:block;font-size:12px;color:#aaa;margin-bottom:3px;">Chat vs 👑 Dom <span style="color:#666;font-size:11px;">(optional)</span></label>
+                    <textarea id="rw-f-chat-dom" rows="2"
+                        style="width:100%;box-sizing:border-box;background:#222;color:#eee;
+                               border:1px solid #555;border-radius:6px;padding:6px;font-size:13px;resize:vertical;"></textarea>
+                </div>
+                <div>
+                    <label style="display:block;font-size:12px;color:#aaa;margin-bottom:3px;">Chat vs 🔗 Sub <span style="color:#666;font-size:11px;">(optional)</span></label>
+                    <textarea id="rw-f-chat-sub" rows="2"
+                        style="width:100%;box-sizing:border-box;background:#222;color:#eee;
+                               border:1px solid #555;border-radius:6px;padding:6px;font-size:13px;resize:vertical;"></textarea>
+                </div>
             </div>
             <div style="display:flex;gap:8px;margin-top:10px;">
                 <button id="rw-form-save"
@@ -743,6 +837,45 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 <input id="rw-idle-minutes" type="number" min="1" max="120" value="${idleMinutes || 5}"
                     style="width:56px;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 7px;font-size:13px;">
                 <span style="color:#aaa;font-size:12px;white-space:nowrap;">min idle</span>
+            </div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:6px;color:#aaa;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Minimal Mode</label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                <input type="checkbox" id="rw-minimal-mode" ${minimalMode ? "checked" : ""}
+                    style="width:16px;height:16px;accent-color:#ff69b4;cursor:pointer;">
+                <span style="color:#ccc;font-size:13px;">Hide sidebar — nothing visible until wheel opens.
+                    A small dot in the corner lets you re-enable it.</span>
+            </label>
+        </div>
+
+        <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:6px;color:#aaa;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Emote Chains</label>
+            <div id="rw-chain-list" style="margin-bottom:8px;"></div>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input id="rw-new-chain-name" type="text" placeholder="Chain name…"
+                    style="flex:1;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 8px;font-size:13px;">
+                <button id="rw-add-chain"
+                    style="background:#1a1a2e;color:#ff69b4;border:1px solid #ff69b4;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap;">+ New Chain</button>
+            </div>
+            <div id="rw-chain-editor" style="display:none;background:#111;border-radius:8px;padding:12px;margin-top:8px;border:1px solid #333;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <span id="rw-chain-editor-title" style="color:#ff69b4;font-weight:bold;font-size:14px;"></span>
+                    <button id="rw-chain-editor-close"
+                        style="background:none;border:none;color:#aaa;font-size:18px;cursor:pointer;line-height:1;">✕</button>
+                </div>
+                <div id="rw-chain-steps" style="margin-bottom:8px;"></div>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    ${mkDataInput("rw-chain-step-emote", "Add step — emote", Object.values(packs).flat().map(e=>e.name), "")}
+                    <div style="flex-shrink:0;padding-top:18px;">
+                        ${mkInput("rw-chain-step-delay", "Extra delay (s)", "number", "0")}
+                    </div>
+                    <div style="flex-shrink:0;padding-top:18px;">
+                        <button id="rw-chain-add-step"
+                            style="background:#ff69b4;color:#000;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:bold;white-space:nowrap;">Add</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -785,6 +918,123 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         document.body.appendChild(overlay);
         overlay.addEventListener("click", e => { if (e.target === overlay) closeSettingsModal(); });
         wireSettingsEvents(modal);
+    }
+
+    // ---- Chain list + editor helpers ----
+
+    function renderChainList(modal) {
+        const list = modal.querySelector("#rw-chain-list");
+        if (!list) return;
+        list.innerHTML = "";
+        const names = Object.keys(chains);
+        if (!names.length) {
+            list.innerHTML = `<div style="color:#555;font-size:12px;padding:4px 0;">No chains yet</div>`;
+            return;
+        }
+        names.forEach(name => {
+            const row = document.createElement("div");
+            Object.assign(row.style, {
+                display: "flex", alignItems: "center", gap: "6px",
+                padding: "4px 0", borderBottom: "1px solid #1e1e2e",
+            });
+            const lbl = document.createElement("span");
+            lbl.style.cssText = "flex:1;color:#eee;font-size:13px;";
+            const steps = chains[name];
+            lbl.textContent = `⛓ ${name} (${steps.length} step${steps.length !== 1 ? "s" : ""}: ${steps.map(s=>s.emoteName).join(" → ")})`;
+
+            const editBtn = document.createElement("button");
+            editBtn.textContent = "Edit";
+            Object.assign(editBtn.style, {background:"#444",color:"#eee",border:"none",borderRadius:"4px",padding:"3px 8px",cursor:"pointer",fontSize:"12px"});
+            editBtn.onclick = () => openChainEditor(modal, name);
+
+            const delBtn = document.createElement("button");
+            delBtn.textContent = "Del";
+            Object.assign(delBtn.style, {background:"#6b0000",color:"#eee",border:"none",borderRadius:"4px",padding:"3px 8px",cursor:"pointer",fontSize:"12px"});
+            delBtn.onclick = () => {
+                if (!confirm(`Delete chain "${name}"?`)) return;
+                delete chains[name];
+                saveData(); renderChainList(modal);
+                if (modal.querySelector("#rw-chain-editor-title")?.textContent === name) {
+                    modal.querySelector("#rw-chain-editor").style.display = "none";
+                }
+            };
+
+            row.append(lbl, editBtn, delBtn);
+            list.appendChild(row);
+        });
+    }
+
+    function openChainEditor(modal, name) {
+        const editor = modal.querySelector("#rw-chain-editor");
+        modal.querySelector("#rw-chain-editor-title").textContent = name;
+        editor.style.display = "block";
+        renderChainSteps(modal, name);
+
+        // Wire add-step button fresh each open to capture the correct name
+        const addBtn = modal.querySelector("#rw-chain-add-step");
+        addBtn.onclick = () => {
+            const emName = modal.querySelector("#rw-chain-step-emote").value.trim();
+            const delay  = parseFloat(modal.querySelector("#rw-chain-step-delay").value) || 0;
+            if (!emName) { alert("Choose an emote for this step."); return; }
+            if (!chains[name]) chains[name] = [];
+            chains[name].push({emoteName: emName, delay});
+            saveData();
+            renderChainSteps(modal, name);
+            renderChainList(modal);
+            modal.querySelector("#rw-chain-step-emote").value = "";
+            modal.querySelector("#rw-chain-step-delay").value = "0";
+        };
+        editor.scrollIntoView({behavior:"smooth"});
+    }
+
+    function renderChainSteps(modal, name) {
+        const container = modal.querySelector("#rw-chain-steps");
+        if (!container) return;
+        container.innerHTML = "";
+        const steps = chains[name] || [];
+        if (!steps.length) {
+            container.innerHTML = `<div style="color:#555;font-size:12px;padding:4px 0;">No steps yet — add one below</div>`;
+            return;
+        }
+        steps.forEach((step, i) => {
+            const row = document.createElement("div");
+            Object.assign(row.style, {
+                display: "flex", alignItems: "center", gap: "6px",
+                padding: "4px 0", borderBottom: "1px solid #1e1e2e", fontSize: "13px",
+            });
+            const lbl = document.createElement("span");
+            lbl.style.cssText = "flex:1;color:#eee;";
+            lbl.textContent = `${i + 1}. ${step.emoteName}${step.delay ? ` (+${step.delay}s)` : ""}`;
+
+            const upBtn = document.createElement("button");
+            upBtn.textContent = "↑"; upBtn.title = "Move up";
+            Object.assign(upBtn.style, {background:"#333",color:"#eee",border:"none",borderRadius:"4px",padding:"2px 6px",cursor:"pointer"});
+            upBtn.disabled = i === 0;
+            upBtn.onclick = () => {
+                [steps[i-1], steps[i]] = [steps[i], steps[i-1]];
+                saveData(); renderChainSteps(modal, name); renderChainList(modal);
+            };
+
+            const dnBtn = document.createElement("button");
+            dnBtn.textContent = "↓"; dnBtn.title = "Move down";
+            Object.assign(dnBtn.style, {background:"#333",color:"#eee",border:"none",borderRadius:"4px",padding:"2px 6px",cursor:"pointer"});
+            dnBtn.disabled = i === steps.length - 1;
+            dnBtn.onclick = () => {
+                [steps[i], steps[i+1]] = [steps[i+1], steps[i]];
+                saveData(); renderChainSteps(modal, name); renderChainList(modal);
+            };
+
+            const delBtn = document.createElement("button");
+            delBtn.textContent = "✕";
+            Object.assign(delBtn.style, {background:"#6b0000",color:"#eee",border:"none",borderRadius:"4px",padding:"2px 6px",cursor:"pointer"});
+            delBtn.onclick = () => {
+                steps.splice(i, 1);
+                saveData(); renderChainSteps(modal, name); renderChainList(modal);
+            };
+
+            row.append(lbl, upBtn, dnBtn, delBtn);
+            container.appendChild(row);
+        });
     }
 
     function wireSettingsEvents(modal) {
@@ -849,8 +1099,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         [0,1,2,3].forEach(i => {
             modal.querySelector(`#rw-pin-${i}`).onchange = ev => {
                 const val = ev.target.value;
-                if (!val) { pinnedEmotes[i] = null; }
-                else {
+                if (!val) {
+                    pinnedEmotes[i] = null;
+                } else if (val.startsWith("chain::")) {
+                    pinnedEmotes[i] = {chainName: val.slice(7)};
+                } else {
                     const sep = val.indexOf("::");
                     pinnedEmotes[i] = {packName: val.slice(0, sep), emoteName: val.slice(sep + 2)};
                 }
@@ -892,6 +1145,29 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         };
         modal.querySelector("#rw-idle-minutes").onchange = e => {
             idleMinutes = Math.max(0, parseFloat(e.target.value) || 0); saveData();
+        };
+
+        modal.querySelector("#rw-minimal-mode").onchange = e => {
+            minimalMode = e.target.checked; saveData(); applyMinimalMode();
+        };
+
+        // ---- Chain editor wiring ----
+        renderChainList(modal);
+
+        modal.querySelector("#rw-add-chain").onclick = () => {
+            const nameEl = modal.querySelector("#rw-new-chain-name");
+            const name   = nameEl.value.trim();
+            if (!name) { alert("Enter a chain name."); return; }
+            if (chains[name]) { alert(`Chain "${name}" already exists.`); return; }
+            chains[name] = [];
+            saveData();
+            nameEl.value = "";
+            renderChainList(modal);
+            openChainEditor(modal, name);
+        };
+
+        modal.querySelector("#rw-chain-editor-close").onclick = () => {
+            modal.querySelector("#rw-chain-editor").style.display = "none";
         };
 
         modal.querySelector("#rw-export").onclick = () => {
@@ -941,6 +1217,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         modal.querySelector("#rw-f-arousal").value       = e?.arousal       ?? 0;
         modal.querySelector("#rw-f-followup").value      = e?.followUp      ?? "";
         modal.querySelector("#rw-f-followup-delay").value = e?.followUpDelay ?? 0;
+        modal.querySelector("#rw-f-chat-dom").value  = e?.chatDom  ?? "";
+        modal.querySelector("#rw-f-chat-sub").value  = e?.chatSub  ?? "";
         form.scrollIntoView({behavior:"smooth"});
     }
 
@@ -958,6 +1236,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             arousal:        parseFloat(modal.querySelector("#rw-f-arousal").value)        || 0,
             followUp:       modal.querySelector("#rw-f-followup").value.trim()            || "",
             followUpDelay:  parseFloat(modal.querySelector("#rw-f-followup-delay").value) || 0,
+            chatDom:        modal.querySelector("#rw-f-chat-dom").value.trim()            || "",
+            chatSub:        modal.querySelector("#rw-f-chat-sub").value.trim()            || "",
         };
         if (!emote.name) { alert("Emote name is required."); return; }
         if (idx >= 0) { packs[currentPack][idx] = emote; } else { packs[currentPack].push(emote); }
@@ -1205,13 +1485,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         const btn = document.getElementById("rw-target-btn");
         if (!btn) return;
         if (currentTarget) {
-            btn.textContent       = `🎯 ${currentTarget.name}`;
-            btn.title             = `Target: ${currentTarget.name} — [Name] in chat text is replaced (click to change)`;
+            const roleTag = currentTarget.role === "dom" ? " 👑" : currentTarget.role === "sub" ? " 🔗" : "";
+            btn.textContent       = `🎯 ${currentTarget.name}${roleTag}`;
+            btn.title             = `Target: ${currentTarget.name}${roleTag} — [Name]/[They]/[Them]/[Their] substituted in chat. Click to change.`;
             btn.style.color       = "#ffd700";
             btn.style.borderColor = "#ffd700";
         } else {
             btn.textContent       = "🎯";
-            btn.title             = "No target — click to pick one. Use [Name] in emote text to insert their name.";
+            btn.title             = "No target — click to pick one. Use [Name] [They] [Them] [Their] in emote text.";
             btn.style.color       = "#ff69b4";
             btn.style.borderColor = "#ff69b4";
         }
@@ -1254,9 +1535,96 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!chars.length) {
             menu.appendChild(makeItem("(no one else here)", () => {}, "#555"));
         } else {
-            chars.forEach(c => menu.appendChild(
-                makeItem(c.Name, () => { currentTarget = {name: c.Name}; updateTargetButton(); })
-            ));
+            chars.forEach(c => {
+                const row = document.createElement("div");
+                Object.assign(row.style, {
+                    display: "flex", alignItems: "center",
+                    borderBottom: "1px solid #2a2a3a",
+                });
+
+                // Name button (sets target)
+                const namePart = document.createElement("div");
+                namePart.textContent = c.Name;
+                Object.assign(namePart.style, {
+                    flex: "1", padding: "8px 14px", cursor: "pointer",
+                    color: currentTarget?.name === c.Name ? "#ffd700" : "#eee",
+                });
+                namePart.onmouseenter = () => namePart.style.background = "#2a2a3a";
+                namePart.onmouseleave = () => namePart.style.background = "";
+                namePart.onclick = () => {
+                    const prev = currentTarget?.name === c.Name ? currentTarget : null;
+                    currentTarget = {name: c.Name, role: prev?.role || null, pronouns: prev?.pronouns || null};
+                    updateTargetButton(); menu.remove();
+                };
+
+                // Role toggle buttons
+                const makeRoleBtn = (label, role, title) => {
+                    const btn = document.createElement("button");
+                    btn.textContent = label;
+                    btn.title = title;
+                    const isActive = currentTarget?.name === c.Name && currentTarget?.role === role;
+                    Object.assign(btn.style, {
+                        background: isActive ? "#ff69b4" : "#1a1a2e",
+                        color: isActive ? "#000" : "#aaa",
+                        border: "1px solid #333", borderRadius: "4px",
+                        padding: "3px 6px", margin: "0 2px",
+                        cursor: "pointer", fontSize: "13px",
+                    });
+                    btn.onclick = e => {
+                        e.stopPropagation();
+                        const prev = currentTarget?.name === c.Name ? currentTarget : {name: c.Name};
+                        const newRole = prev.role === role ? null : role;
+                        currentTarget = {
+                            name: c.Name,
+                            role: newRole,
+                            pronouns: prev.pronouns || null,
+                        };
+                        updateTargetButton();
+                        menu.remove();
+                        openTargetPicker(); // reopen to show updated state
+                    };
+                    return btn;
+                };
+
+                const makePronounBtn = (label, pronouns, title) => {
+                    const btn = document.createElement("button");
+                    btn.textContent = label;
+                    btn.title = title;
+                    const p = currentTarget?.name === c.Name ? currentTarget?.pronouns : null;
+                    const isActive = p && p.they === pronouns.they;
+                    Object.assign(btn.style, {
+                        background: isActive ? "#00bfff" : "#1a1a2e",
+                        color: isActive ? "#000" : "#aaa",
+                        border: "1px solid #333", borderRadius: "4px",
+                        padding: "3px 5px", margin: "0 1px",
+                        cursor: "pointer", fontSize: "11px",
+                    });
+                    btn.onclick = e => {
+                        e.stopPropagation();
+                        const prev = currentTarget?.name === c.Name ? currentTarget : {name: c.Name};
+                        currentTarget = {
+                            name: c.Name,
+                            role: prev.role || null,
+                            pronouns: isActive ? null : pronouns,
+                        };
+                        updateTargetButton();
+                        menu.remove();
+                        openTargetPicker();
+                    };
+                    return btn;
+                };
+
+                const controls = document.createElement("div");
+                controls.style.cssText = "display:flex;align-items:center;padding:0 6px;gap:2px;flex-shrink:0;";
+                controls.appendChild(makeRoleBtn("👑", "dom", "Tag as Dom (enables Dom-specific emote text)"));
+                controls.appendChild(makeRoleBtn("🔗", "sub", "Tag as Sub (enables Sub-specific emote text)"));
+                controls.appendChild(makePronounBtn("he", {they:"he", them:"him", their:"his"}, "he/him/his"));
+                controls.appendChild(makePronounBtn("she", {they:"she", them:"her", their:"her"}, "she/her/her"));
+                controls.appendChild(makePronounBtn("they", {they:"they", them:"them", their:"their"}, "they/them/their"));
+
+                row.append(namePart, controls);
+                menu.appendChild(row);
+            });
         }
 
         document.body.appendChild(menu);
@@ -1317,6 +1685,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
         const n = parseInt(e.key);
         if (n >= 1 && n <= 8) {
+            // Check if pinned slot is a chain
+            if (n <= 4) {
+                const pin = pinnedEmotes[n - 1];
+                if (pin?.chainName) {
+                    if (chains[pin.chainName]) { fireChain(pin.chainName); e.preventDefault(); }
+                    return;
+                }
+            }
             let emote = n <= 4 ? findPinnedEmote(n - 1) : null;
             if (!emote) emote = (packs[currentPack] || [])[n - 1];
             if (emote && !isOnCooldown(emote)) {
@@ -1543,8 +1919,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         initRightClickReact();
         checkURLImport();
         hookItalicChat();
+        applyMinimalMode();
         console.log(
-            "%c✅ BC Reaction Wheel v1.4.0 loaded! Ctrl=wheel · 1-8=hotkeys · /=search · right-click chat to react.",
+            "%c✅ BC Reaction Wheel v1.5.0 loaded! Ctrl=wheel · 1-8=hotkeys · /=search · right-click chat to react.",
             "color:#ff69b4;font-weight:bold"
         );
     }, 2000);
