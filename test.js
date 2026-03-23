@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BC Reaction Wheel - Fully Featured
 // @namespace    http://khile.dev/
-// @version      1.6.0
+// @version      1.7.0
 // @description  Beautiful radial emote wheel with full editor, packs & more
 // @author       Khile
 // @match        https://www.bondageprojects.com/club_game/*
@@ -22,7 +22,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     const modApi = bcModSdk.registerMod({
         name: "ReactionWheel",
         fullName: "Khile's Reaction Wheel",
-        version: "1.6.0",
+        version: "1.7.0",
         repository: "https://github.com/yourname/bc-reaction-wheel"
     });
 
@@ -136,6 +136,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     let activeTag = null;            // currently filtered tag on the wheel (null = show all)
     let _rolePackPrev = null;        // pack name before a role-based auto-switch
     let _restraintPackPrev = null;   // pack name before a restraint-based auto-switch
+    let scenes = {};                 // {sceneName: {packName, activeTag, target, pinnedEmotes}}
+    let triggers = [];               // [{keyword, emoteName, chainName, caseSensitive, enabled}]
+    // Scheduler state
+    let _schedulerTimer = null;
+    let _schedulerCountdownEl = null;
+    let _schedulerCountdownInterval = null;
 
     const STORAGE_KEY = "bcReactionWheelData";
 
@@ -168,6 +174,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 subPackName        = data.subPackName        || "";
                 arousalThresholds  = data.arousalThresholds  || [];
                 knownPlayers       = data.knownPlayers       || {};
+                scenes             = data.scenes             || {};
+                triggers           = data.triggers           || [];
             }
         } catch(err) { console.error("[ReactionWheel] Load error:", err); }
     }
@@ -180,6 +188,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             minimalMode, chains,
             restraintPackName, domPackName, subPackName,
             arousalThresholds, knownPlayers,
+            scenes, triggers,
         }));
     }
 
@@ -377,7 +386,15 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
 
     // ====================== PERFORM EMOTE ======================
-    function sendChat(text) {
+
+    function getTargetMemberNumber() {
+        if (!currentTarget) return null;
+        const chars = typeof ChatRoomCharacter !== "undefined" ? ChatRoomCharacter : [];
+        const c = chars.find(c => c.Name === currentTarget.name);
+        return c ? c.MemberNumber : null;
+    }
+
+    function sendChat(text, whisper = false) {
         if (suppressChat) return;
         // Substitute [Name] and pronoun tokens with the current target's values
         if (currentTarget) {
@@ -388,6 +405,17 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             text = text.replace(/\[Their\]/gi, p.their);
         }
         if (typeof ServerSend === "function" && typeof CurrentScreen !== "undefined" && CurrentScreen === "ChatRoom") {
+            if (whisper && currentTarget) {
+                const mn = getTargetMemberNumber();
+                if (mn !== null) {
+                    // Whispers don't support emote formatting — strip leading/trailing *
+                    const content = (text.startsWith("*") && text.endsWith("*") && text.length > 2)
+                        ? text.slice(1, -1) : text;
+                    ServerSend("ChatRoomChat", {Content: content, Type: "Whisper", Target: mn});
+                    return;
+                }
+                // Target not in room — fall through to normal chat
+            }
             if (text.startsWith("*") && text.endsWith("*") && text.length > 2) {
                 ServerSend("ChatRoomChat", {Content: text.slice(1, -1), Type: "Emote"});
             } else {
@@ -548,7 +576,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         let chatText = emote.chat;
         if (currentTarget?.role === "dom" && emote.chatDom) chatText = emote.chatDom;
         else if (currentTarget?.role === "sub" && emote.chatSub) chatText = emote.chatSub;
-        if (chatText) sendChat(chatText);
+        // Random variant: split on | and pick one at random
+        if (chatText && chatText.includes("|")) {
+            const variants = chatText.split("|").map(v => v.trim()).filter(Boolean);
+            if (variants.length) chatText = variants[Math.floor(Math.random() * variants.length)];
+        }
+        if (chatText) sendChat(chatText, !!emote.whisper);
         applyExpression(emote.expr, duration);
         applyPose(emote.pose, duration * 1000);
 
@@ -594,6 +627,68 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         } else if (_step + 1 < steps.length) {
             setTimeout(() => fireChain(chainName, _step + 1), 0);
         }
+    }
+
+    // ====================== EMOTE SCHEDULER ======================
+    // Schedule a single emote or chain to fire after N seconds.
+    // Shows a dismissible countdown badge; click it to cancel.
+
+    function scheduleAction(name, isChain, delaySec) {
+        cancelScheduler();
+        _showSchedulerCountdown(name, delaySec);
+        _schedulerTimer = setTimeout(() => {
+            _clearSchedulerCountdown();
+            _schedulerTimer = null;
+            if (isChain) {
+                if (chains[name]) fireChain(name);
+            } else {
+                const emote = findEmoteByName(name);
+                if (emote) { emoteLastUsed[emote.id] = Date.now(); performEmote(emote); }
+            }
+        }, delaySec * 1000);
+    }
+
+    function cancelScheduler() {
+        if (_schedulerTimer) { clearTimeout(_schedulerTimer); _schedulerTimer = null; }
+        _clearSchedulerCountdown();
+    }
+
+    function _showSchedulerCountdown(name, totalSec) {
+        _clearSchedulerCountdown();
+        let remaining = Math.ceil(totalSec);
+        _schedulerCountdownEl = document.createElement("div");
+        _schedulerCountdownEl.id = "rw-scheduler-hud";
+        Object.assign(_schedulerCountdownEl.style, {
+            position: "fixed", top: "50px", left: "50%", transform: "translateX(-50%)",
+            background: "rgba(20,20,35,0.92)",
+            border: "1.5px solid #ffd700", borderRadius: "10px",
+            padding: "6px 18px", zIndex: "99997",
+            fontFamily: "Arial,sans-serif", color: "#ffd700",
+            fontSize: "13px", textAlign: "center",
+            boxShadow: "0 0 16px rgba(255,215,0,0.25)",
+            cursor: "pointer", userSelect: "none", whiteSpace: "nowrap",
+        });
+        _schedulerCountdownEl.title = "Click to cancel scheduled emote";
+        _schedulerCountdownEl.onclick = cancelScheduler;
+        document.body.appendChild(_schedulerCountdownEl);
+        const update = () => {
+            if (_schedulerCountdownEl)
+                _schedulerCountdownEl.textContent = `⏱ ${name} — ${remaining}s`;
+        };
+        update();
+        _schedulerCountdownInterval = setInterval(() => {
+            remaining--;
+            if (remaining <= 0) { _clearSchedulerCountdown(); return; }
+            update();
+        }, 1000);
+    }
+
+    function _clearSchedulerCountdown() {
+        if (_schedulerCountdownInterval) {
+            clearInterval(_schedulerCountdownInterval); _schedulerCountdownInterval = null;
+        }
+        document.getElementById("rw-scheduler-hud")?.remove();
+        _schedulerCountdownEl = null;
     }
 
     // ====================== SMART PACK SWITCHING ======================
@@ -663,6 +758,90 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     setInterval(checkRestraint, 4000);
     setInterval(checkArousalThresholds, 5000);
+
+    // ====================== SCENE PRESETS ======================
+    // A scene snapshot captures: current pack, active tag, target, pinned emotes.
+    // Restoring a scene reinstates all four without touching chains/settings.
+
+    function saveCurrentScene(name) {
+        scenes[name] = {
+            packName:     currentPack,
+            activeTag:    activeTag,
+            target:       currentTarget ? Object.assign({}, currentTarget) : null,
+            pinnedEmotes: pinnedEmotes.map(p => p ? Object.assign({}, p) : null),
+        };
+        saveData();
+    }
+
+    function loadScene(name) {
+        const scene = scenes[name];
+        if (!scene) return;
+        if (scene.packName && packs[scene.packName]) {
+            currentPack = scene.packName;
+            updatePackSwitcher();
+        }
+        activeTag = scene.activeTag || null;
+        updateTagButton();
+        currentTarget = scene.target ? Object.assign({}, scene.target) : null;
+        updateTargetButton();
+        pinnedEmotes = (scene.pinnedEmotes || [null,null,null,null])
+            .map(p => p ? Object.assign({}, p) : null);
+        saveData();
+        if (wheelActive) drawWheel();
+    }
+
+    function deleteScene(name) {
+        delete scenes[name];
+        saveData();
+    }
+
+    // ====================== TRIGGERED REACTIONS ======================
+    // Watches incoming chat messages via MutationObserver.
+    // When a keyword match is found, fires the configured emote or chain.
+
+    function initChatWatcher() {
+        const tryInit = () => {
+            const chatLog = document.getElementById("TextAreaChatLog")
+                         || document.querySelector(".ChatLog")
+                         || document.querySelector("[id*='ChatLog']");
+            if (!chatLog) return false;
+
+            const observer = new MutationObserver(mutations => {
+                if (!triggers.some(t => t.enabled)) return;
+                mutations.forEach(m => {
+                    m.addedNodes.forEach(node => {
+                        if (node.nodeType !== 1) return;
+                        // Skip messages sent by the player themselves
+                        const senderText = node.querySelector?.(".ChatSender, .ChatMessageName, b, strong")?.textContent || "";
+                        if (typeof Player !== "undefined" && senderText.includes(Player.Name)) return;
+                        checkTriggers(node.textContent || "");
+                    });
+                });
+            });
+            observer.observe(chatLog, {childList: true});
+            return true;
+        };
+
+        let attempts = 0;
+        const retry = setInterval(() => {
+            if (tryInit() || ++attempts > 30) clearInterval(retry);
+        }, 2000);
+    }
+
+    function checkTriggers(text) {
+        triggers.forEach(t => {
+            if (!t.enabled || !t.keyword) return;
+            const haystack = t.caseSensitive ? text : text.toLowerCase();
+            const needle   = t.caseSensitive ? t.keyword : t.keyword.toLowerCase();
+            if (!haystack.includes(needle)) return;
+            if (t.chainName && chains[t.chainName]) {
+                fireChain(t.chainName);
+            } else if (t.emoteName) {
+                const emote = findEmoteByName(t.emoteName);
+                if (emote) { emoteLastUsed[emote.id] = Date.now(); performEmote(emote); }
+            }
+        });
+    }
 
     // ====================== SETTINGS MODAL ======================
     // ====================== COLLAPSIBLE SIDEBAR ======================
@@ -959,10 +1138,18 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 ${mkInput(    "rw-f-tags",          "Tags (comma-sep)", "text",                      "submissive, soft")}
             </div>
             <div>
-                <label style="display:block;font-size:12px;color:#aaa;margin-bottom:3px;">Chat / emote text <span style="color:#666;font-size:11px;">[Name] [They] [Them] [Their]</span></label>
+                <label style="display:block;font-size:12px;color:#aaa;margin-bottom:3px;">Chat / emote text
+                    <span style="color:#666;font-size:11px;">[Name] [They] [Them] [Their] &nbsp;·&nbsp; use <b style="color:#aaa;">|</b> to separate random variants</span>
+                </label>
                 <textarea id="rw-f-chat" rows="2"
                     style="width:100%;box-sizing:border-box;background:#222;color:#eee;
                            border:1px solid #555;border-radius:6px;padding:6px;font-size:13px;resize:vertical;"></textarea>
+            </div>
+            <div style="margin-top:6px;">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#ccc;">
+                    <input type="checkbox" id="rw-f-whisper" style="width:14px;height:14px;accent-color:#ff69b4;cursor:pointer;">
+                    <span>🤫 Whisper to target <span style="color:#555;font-size:11px;">(sends as private message to current target)</span></span>
+                </label>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
                 <div>
@@ -1114,6 +1301,53 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     </div>
                 </div>
             </div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:6px;color:#aaa;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Scene Presets</label>
+            <div style="font-size:11px;color:#555;margin-bottom:6px;">Save the current pack, tag filter, target, and pinned slots as a named snapshot.</div>
+            <div id="rw-scene-list" style="margin-bottom:8px;"></div>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input id="rw-new-scene-name" type="text" placeholder="Scene name…"
+                    style="flex:1;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 8px;font-size:13px;">
+                <button id="rw-save-scene"
+                    style="background:#1a1a2e;color:#ff69b4;border:1px solid #ff69b4;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap;">💾 Save</button>
+            </div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:6px;color:#aaa;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Triggered Reactions</label>
+            <div style="font-size:11px;color:#555;margin-bottom:6px;">Auto-fire an emote or chain when a keyword appears in incoming chat.</div>
+            <div id="rw-trigger-list" style="margin-bottom:8px;"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;align-items:end;">
+                <div>
+                    <label style="display:block;font-size:11px;color:#aaa;margin-bottom:2px;">Keyword</label>
+                    <input id="rw-trig-keyword" type="text" placeholder="e.g. *blushes*"
+                        style="width:100%;box-sizing:border-box;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 7px;font-size:13px;">
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;color:#aaa;margin-bottom:2px;">Fire emote</label>
+                    <input id="rw-trig-emote" list="rw-trig-emote-list" autocomplete="off" placeholder="(optional)"
+                        style="width:100%;box-sizing:border-box;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 7px;font-size:13px;">
+                    <datalist id="rw-trig-emote-list">
+                        ${Object.values(packs).flat().map(e=>`<option value="${e.name}">`).join("")}
+                    </datalist>
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;color:#aaa;margin-bottom:2px;">…or chain</label>
+                    <input id="rw-trig-chain" list="rw-trig-chain-list" autocomplete="off" placeholder="(optional)"
+                        style="width:100%;box-sizing:border-box;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 7px;font-size:13px;">
+                    <datalist id="rw-trig-chain-list">
+                        ${Object.keys(chains).map(cn=>`<option value="${cn}">`).join("")}
+                    </datalist>
+                </div>
+                <button id="rw-add-trigger"
+                    style="background:#ff69b4;color:#000;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:bold;white-space:nowrap;">+ Add</button>
+            </div>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:6px;cursor:pointer;font-size:12px;color:#aaa;">
+                <input type="checkbox" id="rw-trig-case" style="accent-color:#ff69b4;">
+                Case-sensitive match
+            </label>
         </div>
 
         <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding-top:10px;border-top:1px solid #2a2a3a;">
@@ -1299,6 +1533,74 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         });
     }
 
+    function renderSceneList(modal) {
+        const list = modal.querySelector("#rw-scene-list");
+        if (!list) return;
+        list.innerHTML = "";
+        const names = Object.keys(scenes);
+        if (!names.length) {
+            list.innerHTML = `<div style="color:#555;font-size:12px;padding:4px 0;">No scenes saved yet</div>`;
+            return;
+        }
+        names.forEach(name => {
+            const row = document.createElement("div");
+            Object.assign(row.style, {display:"flex",alignItems:"center",gap:"6px",padding:"4px 0",borderBottom:"1px solid #1e1e2e"});
+            const lbl = document.createElement("span");
+            lbl.style.cssText = "flex:1;color:#eee;font-size:13px;";
+            const s = scenes[name];
+            const tagPart  = s.activeTag ? ` · 🏷 ${s.activeTag}` : "";
+            const targPart = s.target    ? ` · 🎯 ${s.target.name}` : "";
+            lbl.textContent = `🎭 ${name}  (${s.packName}${tagPart}${targPart})`;
+
+            const loadBtn = document.createElement("button");
+            loadBtn.textContent = "Load";
+            Object.assign(loadBtn.style, {background:"#444",color:"#eee",border:"none",borderRadius:"4px",padding:"3px 8px",cursor:"pointer",fontSize:"12px"});
+            loadBtn.onclick = () => { loadScene(name); closeSettingsModal(); };
+
+            const delBtn = document.createElement("button");
+            delBtn.textContent = "✕";
+            Object.assign(delBtn.style, {background:"#6b0000",color:"#eee",border:"none",borderRadius:"4px",padding:"2px 6px",cursor:"pointer"});
+            delBtn.onclick = () => { deleteScene(name); renderSceneList(modal); };
+
+            row.append(lbl, loadBtn, delBtn);
+            list.appendChild(row);
+        });
+    }
+
+    function renderTriggerList(modal) {
+        const list = modal.querySelector("#rw-trigger-list");
+        if (!list) return;
+        list.innerHTML = "";
+        if (!triggers.length) {
+            list.innerHTML = `<div style="color:#555;font-size:12px;padding:4px 0;">No triggers — add one below</div>`;
+            return;
+        }
+        triggers.forEach((t, i) => {
+            const row = document.createElement("div");
+            Object.assign(row.style, {display:"flex",alignItems:"center",gap:"8px",padding:"4px 0",borderBottom:"1px solid #1e1e2e"});
+
+            const toggle = document.createElement("input");
+            toggle.type = "checkbox"; toggle.checked = t.enabled;
+            toggle.style.cssText = "accent-color:#ff69b4;cursor:pointer;flex-shrink:0;";
+            toggle.title = t.enabled ? "Click to disable" : "Click to enable";
+            toggle.onchange = () => { t.enabled = toggle.checked; saveData(); };
+
+            const lbl = document.createElement("span");
+            lbl.style.cssText = "flex:1;color:#eee;font-size:13px;";
+            const fire = t.chainName ? `chain: ${t.chainName}` : t.emoteName;
+            const cs   = t.caseSensitive ? " (case)" : "";
+            lbl.textContent = `"${t.keyword}"${cs} → ${fire}`;
+
+            const delBtn = document.createElement("button");
+            delBtn.textContent = "✕";
+            Object.assign(delBtn.style, {background:"#6b0000",color:"#eee",border:"none",borderRadius:"4px",padding:"2px 6px",cursor:"pointer"});
+            delBtn.onclick = () => { triggers.splice(i, 1); saveData(); renderTriggerList(modal); };
+
+            row.append(toggle, lbl, delBtn);
+            list.appendChild(row);
+        });
+    }
+
     function wireSettingsEvents(modal) {
         modal.querySelector("#rw-close").onclick = closeSettingsModal;
 
@@ -1448,6 +1750,33 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             modal.querySelector("#rw-chain-editor").style.display = "none";
         };
 
+        // ---- Scene preset wiring ----
+        renderSceneList(modal);
+        modal.querySelector("#rw-save-scene").onclick = () => {
+            const nameEl = modal.querySelector("#rw-new-scene-name");
+            const name   = nameEl.value.trim();
+            if (!name) { alert("Enter a scene name."); return; }
+            saveCurrentScene(name);
+            nameEl.value = "";
+            renderSceneList(modal);
+        };
+
+        // ---- Triggered reactions wiring ----
+        renderTriggerList(modal);
+        modal.querySelector("#rw-add-trigger").onclick = () => {
+            const keyword = modal.querySelector("#rw-trig-keyword").value.trim();
+            const emote   = modal.querySelector("#rw-trig-emote").value.trim();
+            const chain   = modal.querySelector("#rw-trig-chain").value.trim();
+            const cs      = modal.querySelector("#rw-trig-case").checked;
+            if (!keyword) { alert("Enter a keyword to watch for."); return; }
+            if (!emote && !chain) { alert("Set an emote or chain to fire."); return; }
+            triggers.push({keyword, emoteName: emote, chainName: chain, caseSensitive: cs, enabled: true});
+            saveData(); renderTriggerList(modal);
+            modal.querySelector("#rw-trig-keyword").value = "";
+            modal.querySelector("#rw-trig-emote").value   = "";
+            modal.querySelector("#rw-trig-chain").value   = "";
+        };
+
         modal.querySelector("#rw-export").onclick = () => {
             const json = JSON.stringify({packs, currentPack, triggerMode, triggerKey}, null, 2);
             const a = Object.assign(document.createElement("a"), {
@@ -1498,6 +1827,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         modal.querySelector("#rw-f-chat-dom").value  = e?.chatDom  ?? "";
         modal.querySelector("#rw-f-chat-sub").value  = e?.chatSub  ?? "";
         modal.querySelector("#rw-f-tags").value       = e?.tags     ?? "";
+        modal.querySelector("#rw-f-whisper").checked  = e?.whisper  ?? false;
         form.scrollIntoView({behavior:"smooth"});
     }
 
@@ -1518,6 +1848,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             chatDom:        modal.querySelector("#rw-f-chat-dom").value.trim()            || "",
             chatSub:        modal.querySelector("#rw-f-chat-sub").value.trim()            || "",
             tags:           modal.querySelector("#rw-f-tags").value.trim()                || "",
+            whisper:        modal.querySelector("#rw-f-whisper").checked                  || false,
         };
         if (!emote.name) { alert("Emote name is required."); return; }
         if (idx >= 0) { packs[currentPack][idx] = emote; } else { packs[currentPack].push(emote); }
@@ -2029,6 +2360,192 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         }, 0);
     }
 
+    // ====================== SCHEDULER SIDEBAR BUTTON ======================
+
+    function createSchedulerButton() {
+        const btn = document.createElement("div");
+        btn.id = "rw-scheduler-btn";
+        Object.assign(btn.style, {
+            fontSize: "18px", cursor: "pointer",
+            background: "rgba(20,20,30,0.85)", color: "#ff69b4",
+            padding: "7px 12px", borderRadius: "8px",
+            border: "1.5px solid #ff69b4", lineHeight: "1.4",
+            userSelect: "none", textAlign: "center",
+        });
+        btn.textContent = "⏱";
+        btn.title = "Schedule emote — fire an emote or chain after a countdown";
+        btn.onclick = openSchedulerPicker;
+        sidebarAppend(btn);
+    }
+
+    function openSchedulerPicker() {
+        document.getElementById("rw-scheduler-picker")?.remove();
+        const btn  = document.getElementById("rw-scheduler-btn");
+        const rect = btn ? btn.getBoundingClientRect() : {left: window.innerWidth - 160, top: 300};
+
+        const panel = document.createElement("div");
+        panel.id = "rw-scheduler-picker";
+        Object.assign(panel.style, {
+            position: "fixed",
+            ...popupPos(rect),
+            background: "#1a1a2e", border: "1.5px solid #ffd700",
+            borderRadius: "10px", zIndex: "100001",
+            fontFamily: "Arial,sans-serif", fontSize: "13px",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.6)",
+            padding: "14px", minWidth: "230px", color: "#eee",
+        });
+
+        const allEmoteOpts = Object.entries(packs).flatMap(([pn, es]) =>
+            es.map(e => `<option value="emote::${e.name}">${e.icon || ""} ${e.name} (${pn})</option>`)
+        ).join("");
+        const allChainOpts = Object.keys(chains).map(cn =>
+            `<option value="chain::${cn}">⛓ ${cn}</option>`
+        ).join("");
+        const isActive = _schedulerTimer !== null;
+
+        panel.innerHTML = `
+            <div style="color:#ffd700;font-weight:bold;margin-bottom:10px;">⏱ Schedule Emote</div>
+            <div style="margin-bottom:8px;">
+                <label style="display:block;font-size:11px;color:#aaa;margin-bottom:3px;">Emote or Chain</label>
+                <select id="rw-sched-target"
+                    style="width:100%;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 7px;font-size:13px;">
+                    <optgroup label="Emotes">${allEmoteOpts}</optgroup>
+                    <optgroup label="Chains">${allChainOpts}</optgroup>
+                </select>
+            </div>
+            <div style="margin-bottom:10px;">
+                <label style="display:block;font-size:11px;color:#aaa;margin-bottom:3px;">Delay (seconds)</label>
+                <input id="rw-sched-delay" type="number" min="1" max="3600" value="10"
+                    style="width:100%;box-sizing:border-box;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 7px;font-size:13px;">
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button id="rw-sched-go"
+                    style="flex:1;background:#ffd700;color:#000;border:none;border-radius:6px;padding:7px;cursor:pointer;font-weight:bold;">Schedule</button>
+                ${isActive ? `<button id="rw-sched-cancel"
+                    style="flex:1;background:#6b0000;color:#eee;border:none;border-radius:6px;padding:7px;cursor:pointer;">Cancel</button>` : ""}
+            </div>
+        `;
+
+        document.body.appendChild(panel);
+
+        panel.querySelector("#rw-sched-go").onclick = () => {
+            const val   = panel.querySelector("#rw-sched-target").value;
+            const delay = parseFloat(panel.querySelector("#rw-sched-delay").value) || 10;
+            if (!val) return;
+            const isChain = val.startsWith("chain::");
+            const name    = val.slice(7); // both "emote::" and "chain::" are 7 chars
+            scheduleAction(name, isChain, delay);
+            panel.remove();
+        };
+        const cancelSchedBtn = panel.querySelector("#rw-sched-cancel");
+        if (cancelSchedBtn) cancelSchedBtn.onclick = () => { cancelScheduler(); panel.remove(); };
+
+        setTimeout(() => {
+            const close = e => {
+                if (!panel.contains(e.target) && e.target !== btn) {
+                    panel.remove(); document.removeEventListener("click", close);
+                }
+            };
+            document.addEventListener("click", close);
+        }, 0);
+    }
+
+    // ====================== SCENE PRESETS SIDEBAR BUTTON ======================
+
+    function createScenesButton() {
+        const btn = document.createElement("div");
+        btn.id = "rw-scenes-btn";
+        Object.assign(btn.style, {
+            fontSize: "18px", cursor: "pointer",
+            background: "rgba(20,20,30,0.85)", color: "#ff69b4",
+            padding: "7px 12px", borderRadius: "8px",
+            border: "1.5px solid #ff69b4", lineHeight: "1.4",
+            userSelect: "none", textAlign: "center",
+        });
+        btn.textContent = "🎭";
+        btn.title = "Scene presets — save or restore pack + tag + target + pins";
+        btn.onclick = openScenesPicker;
+        sidebarAppend(btn);
+    }
+
+    function openScenesPicker() {
+        document.getElementById("rw-scenes-picker")?.remove();
+        const btn  = document.getElementById("rw-scenes-btn");
+        const rect = btn ? btn.getBoundingClientRect() : {left: window.innerWidth - 160, top: 300};
+
+        const panel = document.createElement("div");
+        panel.id = "rw-scenes-picker";
+        Object.assign(panel.style, {
+            position: "fixed",
+            ...popupPos(rect),
+            background: "#1a1a2e", border: "1.5px solid #ff69b4",
+            borderRadius: "10px", zIndex: "100001",
+            fontFamily: "Arial,sans-serif", fontSize: "13px",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.6)",
+            padding: "14px", minWidth: "230px", color: "#eee",
+            maxHeight: "360px", overflowY: "auto",
+        });
+
+        const rebuild = () => {
+            panel.innerHTML = `<div style="color:#ff69b4;font-weight:bold;margin-bottom:10px;">🎭 Scene Presets</div>
+                <div id="rw-sp-list" style="margin-bottom:10px;"></div>
+                <div style="display:flex;gap:6px;">
+                    <input id="rw-sp-name" type="text" placeholder="Scene name…"
+                        style="flex:1;background:#2a2a3a;color:#eee;border:1px solid #555;border-radius:6px;padding:5px 7px;font-size:13px;">
+                    <button id="rw-sp-save"
+                        style="background:#ff69b4;color:#000;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;font-weight:bold;white-space:nowrap;">💾 Save</button>
+                </div>`;
+
+            const spList = panel.querySelector("#rw-sp-list");
+            const names  = Object.keys(scenes);
+            if (!names.length) {
+                spList.innerHTML = `<div style="color:#555;font-size:12px;padding:4px 0;">No scenes saved</div>`;
+            } else {
+                names.forEach(name => {
+                    const row = document.createElement("div");
+                    Object.assign(row.style, {display:"flex",alignItems:"center",gap:"6px",padding:"4px 0",borderBottom:"1px solid #1e1e2e"});
+                    const s = scenes[name];
+                    const lbl = document.createElement("span");
+                    lbl.style.cssText = "flex:1;color:#eee;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+                    lbl.textContent = `${name}  (${s.packName}${s.activeTag ? " · "+s.activeTag : ""}${s.target ? " · "+s.target.name : ""})`;
+                    lbl.title = lbl.textContent;
+
+                    const loadBtn = document.createElement("button");
+                    loadBtn.textContent = "Load";
+                    Object.assign(loadBtn.style, {background:"#444",color:"#eee",border:"none",borderRadius:"4px",padding:"3px 8px",cursor:"pointer",fontSize:"12px",flexShrink:"0"});
+                    loadBtn.onclick = () => { loadScene(name); panel.remove(); };
+
+                    const delBtn = document.createElement("button");
+                    delBtn.textContent = "✕";
+                    Object.assign(delBtn.style, {background:"#6b0000",color:"#eee",border:"none",borderRadius:"4px",padding:"2px 6px",cursor:"pointer",flexShrink:"0"});
+                    delBtn.onclick = () => { deleteScene(name); rebuild(); };
+
+                    row.append(lbl, loadBtn, delBtn);
+                    spList.appendChild(row);
+                });
+            }
+
+            panel.querySelector("#rw-sp-save").onclick = () => {
+                const name = panel.querySelector("#rw-sp-name").value.trim();
+                if (!name) { alert("Enter a scene name."); return; }
+                saveCurrentScene(name);
+                rebuild();
+            };
+        };
+
+        rebuild();
+        document.body.appendChild(panel);
+
+        setTimeout(() => {
+            const close = e => {
+                if (!panel.contains(e.target) && e.target !== btn) {
+                    panel.remove(); document.removeEventListener("click", close);
+                }
+            };
+            document.addEventListener("click", close);
+        }, 0);
+    }
+
     // ====================== ITALIC CHAT HOOK ======================
     // Intercepts Enter on BC's chat input: if the message is *wrapped in asterisks*,
     // re-send it as an Emote so BC renders it italic instead of plain text.
@@ -2311,12 +2828,15 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         createTargetButton();
         createTagFilterButton();
         createHistoryButton();
+        createSchedulerButton();
+        createScenesButton();
         initRightClickReact();
         checkURLImport();
         hookItalicChat();
         applyMinimalMode();
+        initChatWatcher();
         console.log(
-            "%c✅ BC Reaction Wheel v1.6.0 loaded! Ctrl=wheel · 1-8=hotkeys · /=search · right-click chat to react.",
+            "%c✅ BC Reaction Wheel v1.7.0 loaded! Ctrl=wheel · 1-8=hotkeys · /=search · right-click chat to react.",
             "color:#ff69b4;font-weight:bold"
         );
     }, 2000);
