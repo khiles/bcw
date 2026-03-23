@@ -188,7 +188,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         let added = false;
         Object.entries(PREMADE_PACKS).forEach(([name, emotes]) => {
             if (name === "Default") return; // never re-stamp Default
-            if (!packs[name]) { packs[name] = emotes; added = true; }
+            // Fill if missing OR still empty (created by earlier broken version)
+            if (!packs[name] || packs[name].length === 0) { packs[name] = emotes; added = true; }
         });
         if (added) saveData();
     }
