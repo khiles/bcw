@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BC Reaction Wheel - Fully Featured
 // @namespace    http://khile.dev/
-// @version      1.7.0
+// @version      1.7.1
 // @description  Beautiful radial emote wheel with full editor, packs & more
 // @author       Khile
 // @match        https://www.bondageprojects.com/club_game/*
@@ -22,7 +22,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     const modApi = bcModSdk.registerMod({
         name: "ReactionWheel",
         fullName: "Khile's Reaction Wheel",
-        version: "1.7.0",
+        version: "1.7.1",
         repository: "https://github.com/yourname/bc-reaction-wheel"
     });
 
@@ -468,19 +468,19 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         return result;
     });
 
-    function applyPose(poseName, durationMs) {
+    function applyPose(poseName) {
         if (!poseName) return;
-        const savedPose = Array.isArray(Player.ActivePose) ? [...Player.ActivePose] : [];
-
+        // Special value "Stand" clears the forced pose and lets BC return to default
+        if (poseName.toLowerCase() === "stand") {
+            _forcedPose = null;
+            Player.ActivePose = [];
+            if (typeof CharacterRefresh === "function") CharacterRefresh(Player);
+            return;
+        }
+        // Pose persists until another emote changes it (no auto-revert)
         _forcedPose = poseName;
         Player.ActivePose = [poseName];
         if (typeof CharacterRefresh === "function") CharacterRefresh(Player);
-
-        setTimeout(() => {
-            _forcedPose = null;
-            Player.ActivePose = savedPose;
-            if (typeof CharacterRefresh === "function") CharacterRefresh(Player);
-        }, durationMs);
     }
 
     // ====================== ACTIVE EMOTE HUD ======================
@@ -583,7 +583,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         }
         if (chatText) sendChat(chatText, !!emote.whisper);
         applyExpression(emote.expr, duration);
-        applyPose(emote.pose, duration * 1000);
+        applyPose(emote.pose);
 
         if (emote.arousal && Player.ArousalSettings) {
             const current = Player.ArousalSettings.Progress || 0;
@@ -1132,7 +1132,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 ${mkInput("rw-f-duration", "Duration (s)", "number", "5")}
                 ${mkInput("rw-f-arousal",  "Arousal +",    "number", "5")}
                 ${mkDataInput("rw-f-expr",          "Expression",       Object.keys(EXPRESSION_MAP), "Sad")}
-                ${mkDataInput("rw-f-pose",          "Pose",             BC_POSES,                    "Kneel")}
+                ${mkDataInput("rw-f-pose",          "Pose (persists · Stand to reset)",  ["Stand",...BC_POSES],  "Kneel")}
                 ${mkDataInput("rw-f-followup",      "Follow-up emote",  emoteNames,                  "(none)")}
                 ${mkInput(    "rw-f-followup-delay","Follow-up delay(s)","number",                   "0")}
                 ${mkInput(    "rw-f-tags",          "Tags (comma-sep)", "text",                      "submissive, soft")}
@@ -2836,7 +2836,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         applyMinimalMode();
         initChatWatcher();
         console.log(
-            "%c✅ BC Reaction Wheel v1.7.0 loaded! Ctrl=wheel · 1-8=hotkeys · /=search · right-click chat to react.",
+            "%c✅ BC Reaction Wheel v1.7.1 loaded! Ctrl=wheel · 1-8=hotkeys · /=search · right-click chat to react.",
             "color:#ff69b4;font-weight:bold"
         );
     }, 2000);
