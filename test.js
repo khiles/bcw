@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BC Reaction Wheel - Fully Featured
 // @namespace    http://khile.dev/
-// @version      1.7.1
+// @version      1.7.2
 // @description  Beautiful radial emote wheel with full editor, packs & more
 // @author       Khile
 // @match        https://www.bondageprojects.com/club_game/*
@@ -22,7 +22,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     const modApi = bcModSdk.registerMod({
         name: "ReactionWheel",
         fullName: "Khile's Reaction Wheel",
-        version: "1.7.1",
+        version: "1.7.2",
         repository: "https://github.com/yourname/bc-reaction-wheel"
     });
 
@@ -375,12 +375,20 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         drawWheel();
     }
 
-    function onMouseUp() {
+    function onMouseUp(e) {
         const emotes = getActiveEmotes();
         const emote  = emotes[selected];
-        if (emote && !isOnCooldown(emote)) {
-            emoteLastUsed[emote.id] = Date.now();
-            performEmote(emote);
+        // Only fire if the mouse is actually over the wheel canvas when released.
+        // This prevents clicks on the pack-switcher, sidebar buttons, or anywhere
+        // else on the page from accidentally firing an emote while the wheel is open.
+        if (emote && !isOnCooldown(emote) && canvas) {
+            const rect = canvas.getBoundingClientRect();
+            const overCanvas = e.clientX >= rect.left && e.clientX <= rect.right &&
+                               e.clientY >= rect.top  && e.clientY <= rect.bottom;
+            if (overCanvas) {
+                emoteLastUsed[emote.id] = Date.now();
+                performEmote(emote);
+            }
         }
         hideWheel();
     }
@@ -699,7 +707,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         currentPack = newPack;
         activeTag = null; updateTagButton();
         saveData(); updatePackSwitcher();
-        if (wheelActive) drawWheel();
+        if (wheelActive) { selected = -1; drawWheel(); }
     }
 
     // Called whenever currentTarget.role changes; auto-switches packs if configured
@@ -2836,7 +2844,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         applyMinimalMode();
         initChatWatcher();
         console.log(
-            "%c✅ BC Reaction Wheel v1.7.1 loaded! Ctrl=wheel · 1-8=hotkeys · /=search · right-click chat to react.",
+            "%c✅ BC Reaction Wheel v1.7.2 loaded! Ctrl=wheel · 1-8=hotkeys · /=search · right-click chat to react.",
             "color:#ff69b4;font-weight:bold"
         );
     }, 2000);
